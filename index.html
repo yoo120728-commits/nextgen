@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FC26 Career Universe - Vision & OCR Parser Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tesseract.js (クライアントサイドOCR & Bounding Box抽出) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 p-4 md:p-8 min-h-screen font-sans">
+
+  <div class="max-w-7xl mx-auto space-y-6">
+    
+    <!-- ヘッダー -->
+    <header class="border-b border-slate-800 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-emerald-400 flex items-center gap-2">
+          ⚽ FC26 Career Screenshot Parser
+        </h1>
+        <p class="text-xs text-slate-400 mt-1">
+          レイアウト構造解析・セル単位データ抽出・型バリデーション・インタラクティブ修正UI
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="statusBadge" class="bg-slate-800 text-slate-400 text-xs px-3 py-1.5 rounded-full border border-slate-700">
+          待機中
+        </span>
+      </div>
+    </header>
+
+    <!-- タブ切り替え & 設定 -->
+    <div class="flex border-b border-slate-800 space-x-4">
+      <button id="tabSquad" class="pb-2 px-4 border-b-2 border-emerald-500 font-bold text-emerald-400 text-sm">
+        👤 選手一覧 (Squad List)
+      </button>
+      <button id="tabLeague" class="pb-2 px-4 border-b-2 border-transparent font-medium text-slate-400 text-sm hover:text-slate-200">
+        🏆 順位表 (League Table)
+      </button>
+    </div>
+
+    <!-- 画像アップロード・前処理エリア -->
+    <section class="bg-slate-800/80 p-5 rounded-xl border border-slate-700/80 shadow-lg space-y-4">
+      <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div class="w-full sm:w-auto flex-1">
+          <label class="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider">
+            FC26 スクリーンショットを選択 (複数ファイル・連続スクロール対応)
+          </label>
+          <input type="file" id="imageInput" multiple accept="image/*" class="block w-full text-xs text-slate-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer border border-slate-700 rounded-lg bg-slate-900/50">
+        </div>
+        <div class="flex gap-2 w-full sm:w-auto">
+          <button id="btnProcess" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow transition-all disabled:opacity-50" disabled>
+            🔍 解析実行
+          </button>
+        </div>
+      </div>
+
+      <!-- 画像プレビューリスト -->
+      <div id="imagePreviewList" class="flex flex-wrap gap-3 pt-2 hidden border-t border-slate-700/50"></div>
+      <canvas id="prepCanvas" class="hidden"></canvas>
+    </section>
+
+    <!-- プログレス表示 -->
+    <div id="progressArea" class="hidden bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-2">
+      <div class="flex justify-between text-xs text-slate-300">
+        <span id="progressText">画像前処理中...</span>
+        <span id="progressPercent">0%</span>
+      </div>
+      <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden">
+        <div id="progressBar" class="bg-emerald-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- 重複・矛盾検出アラートエリア -->
+    <div id="alertContainer" class="space-y-2"></div>
+
+    <!-- 解析結果エリア (選手一覧) -->
+    <section id="squadResultSection" class="hidden bg-slate-800/90 p-5 rounded-xl border border-slate-700 shadow-xl space-y-4">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div>
+          <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+            解析結果一覧 (<span id="playerCount" class="text-emerald-400">0</span> 名)
+          </h2>
+          <p class="text-[11px] text-slate-400">セルを直接タップ／クリックして修正可能です。色付きセルは要確認項目です。</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnDeduplicate" class="bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs px-3 py-2 rounded-lg font-medium transition">
+            🔄 重複チェック・統合
+          </button>
+          <button id="btnExportJSON" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs px-3 py-2 rounded-lg transition">
+            📥 JSON出力
+          </button>
+          <button id="btnSaveSquad" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition shadow">
+            💾 データベースへ保存
+          </button>
+        </div>
+      </div>
+
+      <!-- テーブル (選手一覧) -->
+      <div class="overflow-x-auto border border-slate-700/80 rounded-lg shadow-inner">
+        <table class="w-full text-left text-xs text-slate-300 border-collapse min-w-[700px]">
+          <thead class="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider sticky top-0">
+            <tr>
+              <th class="p-2.5 border-b border-r border-slate-700 w-20">POS</th>
+              <th class="p-2.5 border-b border-r border-slate-700">NAME</th>
+              <th class="p-2.5 border-b border-r border-slate-700 w-16">AGE</th>
+              <th class="p-2.5 border-b border-r border-slate-700 w-28">VALUE</th>
+              <th class="p-2.5 border-b border-r border-slate-700 w-28">WAGE</th>
+              <th class="p-2.5 border-b border-r border-slate-700 w-28">CONTRACT</th>
+              <th class="p-2.5 border-b border-slate-700 text-center w-28">操作</th>
+            </tr>
+          </thead>
+          <tbody id="squadTableBody" class="divide-y divide-slate-700/60 bg-slate-850"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 解析結果エリア (順位表) -->
+    <section id="leagueResultSection" class="hidden bg-slate-800/90 p-5 rounded-xl border border-slate-700 shadow-xl space-y-4">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div>
+          <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+            順位表データ (<span id="clubCount" class="text-emerald-400">0</span> クラブ)
+          </h2>
+          <p class="text-[11px] text-slate-400">試合数・得失点差・勝点の整合性チェックをリアルタイムで実行します。</p>
+        </div>
+        <button id="btnSaveLeague" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition shadow">
+          💾 順位表を保存
+        </button>
+      </div>
+
+      <!-- テーブル (順位表) -->
+      <div class="overflow-x-auto border border-slate-700/80 rounded-lg shadow-inner">
+        <table class="w-full text-left text-xs text-slate-300 border-collapse min-w-[750px]">
+          <thead class="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider">
+            <tr>
+              <th class="p-2 border-b border-r border-slate-700 w-12 text-center">順位</th>
+              <th class="p-2 border-b border-r border-slate-700">クラブ名</th>
+              <th class="p-2 border-b border-r border-slate-700 w-12 text-center">試合</th>
+              <th class="p-2 border-b border-r border-slate-700 w-12 text-center">勝</th>
+              <th class="p-2 border-b border-r border-slate-700 w-12 text-center">分</th>
+              <th class="p-2 border-b border-r border-slate-700 w-12 text-center">敗</th>
+              <th class="p-2 border-b border-r border-slate-700 w-12 text-center">得点</th>
+              <th class="p-2 border-b border-r border-slate-700 w-12 text-center">失点</th>
+              <th class="p-2 border-b border-r border-slate-700 w-14 text-center">得失差</th>
+              <th class="p-2 border-b border-r border-slate-700 w-14 text-center">勝点</th>
+              <th class="p-2 border-b border-slate-700 text-center w-20">状態</th>
+            </tr>
+          </thead>
+          <tbody id="leagueTableBody" class="divide-y divide-slate-700/60"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. 定数・マスターデータ設定
+    // =========================================================================
+    const VALID_POSITIONS = ["GK", "RB", "RWB", "CB", "LB", "LWB", "CDM", "CM", "CAM", "RM", "LM", "RW", "LW", "ST", "CF"];
+    
+    // OCR誤認識文字補正マップ
+    const POS_OCR_MAP = {
+      "L8": "LB", "IB": "LB", "1B": "LB", "L3": "LB",
+      "C8": "CB", "C1B": "CB", "0B": "CB",
+      "C1M": "CM", "C0M": "CM", "CN": "CM",
+      "5T": "ST", "S7": "ST", "51": "ST",
+      "R8": "RB", "1RB": "RB"
+    };
+
+    let activeTab = 'squad'; // 'squad' | 'league'
+    let loadedFiles = [];
+    let squadStore = [];
+    let leagueStore = [];
+
+    // =========================================================================
+    // 2. UI制御・イベントリスナー
+    // =========================================================================
+    const tabSquad = document.getElementById('tabSquad');
+    const tabLeague = document.getElementById('tabLeague');
+    const imageInput = document.getElementById('imageInput');
+    const btnProcess = document.getElementById('btnProcess');
+    const imagePreviewList = document.getElementById('imagePreviewList');
+
+    tabSquad.addEventListener('click', () => switchTab('squad'));
+    tabLeague.addEventListener('click', () => switchTab('league'));
+
+    function switchTab(tab) {
+      activeTab = tab;
+      if (tab === 'squad') {
+        tabSquad.className = "pb-2 px-4 border-b-2 border-emerald-500 font-bold text-emerald-400 text-sm";
+        tabLeague.className = "pb-2 px-4 border-b-2 border-transparent font-medium text-slate-400 text-sm hover:text-slate-200";
+        document.getElementById('squadResultSection').classList.toggle('hidden', squadStore.length === 0);
+        document.getElementById('leagueResultSection').classList.add('hidden');
+      } else {
+        tabLeague.className = "pb-2 px-4 border-b-2 border-emerald-500 font-bold text-emerald-400 text-sm";
+        tabSquad.className = "pb-2 px-4 border-b-2 border-transparent font-medium text-slate-400 text-sm hover:text-slate-200";
+        document.getElementById('leagueResultSection').classList.toggle('hidden', leagueStore.length === 0);
+        document.getElementById('squadResultSection').classList.add('hidden');
+      }
+    }
+
+    imageInput.addEventListener('change', (e) => {
+      loadedFiles = Array.from(e.target.files);
+      imagePreviewList.innerHTML = '';
+      if (loadedFiles.length > 0) {
+        imagePreviewList.classList.remove('hidden');
+        btnProcess.disabled = false;
+        
+        loadedFiles.forEach((file, idx) => {
+          const imgUrl = URL.createObjectURL(file);
+          const div = document.createElement('div');
+          div.className = "relative w-16 h-16 rounded-lg overflow-hidden border border-slate-700 bg-slate-900";
+          div.innerHTML = `
+            <img src="${imgUrl}" class="w-full h-full object-cover">
+            <span class="absolute bottom-0 right-0 bg-slate-900/80 text-[9px] text-slate-300 px-1 font-mono">#${idx+1}</span>
+          `;
+          imagePreviewList.appendChild(div);
+        });
+      } else {
+        imagePreviewList.classList.add('hidden');
+        btnProcess.disabled = true;
+      }
+    });
+
+    // =========================================================================
+    // 3. 前処理パイプライン (高解像度化・シャープ化・コントラスト調整)
+    // =========================================================================
+    function preprocessImage(imgElement) {
+      const canvas = document.getElementById('prepCanvas');
+      const ctx = canvas.getContext('2d');
+
+      // 解像度の維持・拡大
+      canvas.width = imgElement.naturalWidth || imgElement.width;
+      canvas.height = imgElement.naturalHeight || imgElement.height;
+
+      ctx.drawImage(imgElement, 0, 0);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      // コントラストハイライティング (1.25)
+      const contrast = 1.25;
+      const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+
+      for (let i = 0; i < data.length; i += 4) {
+        // グレースケール変換
+        let avg = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+        avg = factor * (avg - 128) + 128;
+        
+        // 二値化に近いシャープ処理
+        avg = avg > 180 ? 255 : (avg < 70 ? 0 : avg);
+
+        data[i] = avg;     // R
+        data[i + 1] = avg; // G
+        data[i + 2] = avg; // B
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      return canvas.toDataURL('image/png');
+    }
+
+    // =========================================================================
+    // 4. 行・列レイアウト認識エンジン (Y軸・X軸クラスタリング)
+    // =========================================================================
+    function clusterWordsIntoRows(words, yThreshold = 14) {
+      // Y軸の高さ昇順でソート
+      const sorted = [...words].sort((a, b) => a.bbox.y0 - b.bbox.y0);
+      const rows = [];
+
+      sorted.forEach(word => {
+        const yCenter = (word.bbox.y0 + word.bbox.y1) / 2;
+        let matchedRow = rows.find(r => Math.abs(r.yCenter - yCenter) < yThreshold);
+
+        if (matchedRow) {
+          matchedRow.items.push(word);
+          // Y軸中心の動的再計算
+          matchedRow.yCenter = matchedRow.items.reduce((acc, w) => acc + (w.bbox.y0 + w.bbox.y1) / 2, 0) / matchedRow.items.length;
+        } else {
+          rows.push({ yCenter, items: [word] });
+        }
+      });
+
+      // 各行内でX座標順に左から右へ並べ替え
+      rows.forEach(r => r.items.sort((a, b) => a.bbox.x0 - b.bbox.x0));
+      return rows;
+    }
+
+    // =========================================================================
+    // 5. データ正規化・型チェック・正規表現パーサー
+    // =========================================================================
+    function normalizePosition(rawText) {
+      if (!rawText) return { val: null, conf: 0, alert: true };
+      const clean = rawText.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+      if (VALID_POSITIONS.includes(clean)) {
+        return { val: clean, conf: 0.98, alert: false };
+      }
+      if (POS_OCR_MAP[clean]) {
+        return { val: POS_OCR_MAP[clean], conf: 0.75, alert: true };
+      }
+      return { val: clean, conf: 0.30, alert: true };
+    }
+
+    function parseMoney(rawText) {
+      if (!rawText) return { val: null, conf: 0 };
+      let s = rawText.toUpperCase().replace(/\s+/g, '').replace(/,/g, '.');
+
+      const hasM = s.includes('M');
+      const hasK = s.includes('K');
+      const hasB = s.includes('B');
+
+      let numMatch = s.match(/[\d.]+/);
+      if (!numMatch) return { val: null, conf: 0 };
+
+      let num = parseFloat(numMatch[0]);
+      if (isNaN(num)) return { val: null, conf: 0 };
+
+      let unit = hasM ? 'M' : (hasK ? 'K' : (hasB ? 'B' : ''));
+      let formatted = `€${num}${unit}`;
+
+      return { val: formatted, conf: unit ? 0.92 : 0.50 };
+    }
+
+    function parseContract(rawText) {
+      if (!rawText) return { years: 0, months: 0, raw: "", conf: 0 };
+
+      let yMatch = rawText.match(/(\d+)\s*年/);
+      let mMatch = rawText.match(/(\d+)\s*ヶ?月/);
+
+      let years = yMatch ? parseInt(yMatch[1], 10) : 0;
+      let months = mMatch ? parseInt(mMatch[1], 10) : 0;
+
+      return {
+        years,
+        months,
+        raw: `${years}年${months}ヶ月`,
+        conf: (yMatch || mMatch) ? 0.90 : 0.40
+      };
+    }
+
+    // =========================================================================
+    // 6. メインOCR解析プロセス
+    // =========================================================================
+    btnProcess.addEventListener('click', async () => {
+      if (!loadedFiles.length) return;
+
+      const progressArea = document.getElementById('progressArea');
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      const progressPercent = document.getElementById('progressPercent');
+      const statusBadge = document.getElementById('statusBadge');
+
+      progressArea.classList.remove('hidden');
+      statusBadge.textContent = "解析中...";
+      statusBadge.className = "bg-amber-900/50 text-amber-300 text-xs px-3 py-1.5 rounded-full border border-amber-700/50";
+
+      const worker = await Tesseract.createWorker('jpn+eng');
+
+      for (let i = 0; i < loadedFiles.length; i++) {
+        const file = loadedFiles[i];
+        const pct = Math.round(((i) / loadedFiles.length) * 100);
+        progressBar.style.width = `${pct}%`;
+        progressPercent.textContent = `${pct}%`;
+        progressText.textContent = `スクショ ${i + 1}/${loadedFiles.length} を処理中...`;
+
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        await img.decode();
+
+        // 1. 前処理
+        const processedBase64 = preprocessImage(img);
+
+        // 2. OCR実行 (単語単位Bounding Box取得)
+        const ret = await worker.recognize(processedBase64);
+        const words = ret.data.words || [];
+
+        // 3. Y軸クラスタリングで行復元
+        const rows = clusterWordsIntoRows(words);
+
+        // 4. モード別パース
+        if (activeTab === 'squad') {
+          rows.forEach(r => {
+            const playerObj = parseSquadRow(r.items);
+            if (playerObj) squadStore.push(playerObj);
+          });
+        } else {
+          rows.forEach(r => {
+            const leagueObj = parseLeagueRow(r.items);
+            if (leagueObj) leagueStore.push(leagueObj);
+          });
+        }
+      }
+
+      await worker.terminate();
+
+      progressBar.style.width = `100%`;
+      progressPercent.textContent = `100%`;
+      progressText.textContent = `解析完了！`;
+      statusBadge.textContent = "解析完了";
+      statusBadge.className = "bg-emerald-900/50 text-emerald-300 text-xs px-3 py-1.5 rounded-full border border-emerald-700/50";
+
+      setTimeout(() => progressArea.classList.add('hidden'), 1500);
+
+      if (activeTab === 'squad') {
+        renderSquadTable();
+      } else {
+        renderLeagueTable();
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // 行データ -> 選手オブジェクト パース処理
+    // -------------------------------------------------------------------------
+    function parseSquadRow(items) {
+      if (items.length < 3) return null;
+      const texts = items.map(i => i.text.trim());
+
+      // ポジション判定 (最左列)
+      const posRes = normalizePosition(texts[0]);
+
+      // 年齢 (2桁の数字を探す)
+      let ageIdx = items.findIndex((item, idx) => idx > 0 && /^\d{2}$/.test(item.text.trim()));
+      let ageVal = ageIdx !== -1 ? parseInt(items[ageIdx].text.trim(), 10) : null;
+
+      if (!posRes.val && ageVal === null) return null; // 選手行でないと判断
+
+      // 名前 (ポジションと年齢の間のトークンを結合)
+      let nameParts = [];
+      let nameStart = 1;
+      let nameEnd = ageIdx !== -1 ? ageIdx : 2;
+      for (let i = nameStart; i < nameEnd; i++) {
+        if (texts[i]) nameParts.push(texts[i]);
+      }
+      let nameVal = nameParts.join(' ') || null;
+
+      // 金額 & 契約 (年齢より右のトークン)
+      let tailText = texts.slice(nameEnd + 1).join(' ');
+      let valRes = parseMoney(tailText.match(/[\d.,]+\s*[MBK]/i)?.[0] || "");
+      let wageRes = parseMoney(tailText.match(/€?[\d.,]+\s*K/i)?.[0] || "");
+      let contractRes = parseContract(tailText);
+
+      return {
+        id: 'p_' + Math.random().toString(36).substr(2, 9),
+        position: posRes,
+        name: { val: nameVal, conf: nameVal ? 0.90 : 0 },
+        age: { val: ageVal, conf: ageVal !== null ? 0.95 : 0, error: ageVal === null },
+        value: valRes,
+        wage: wageRes,
+        contract: contractRes
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // 行データ -> 順位表オブジェクト パース処理
+    // -------------------------------------------------------------------------
+    function parseLeagueRow(items) {
+      if (items.length < 5) return null;
+      const nums = items.map(i => parseInt(i.text.replace(/[^0-9-]/g, ''), 10)).filter(n => !isNaN(n));
+      const texts = items.map(i => i.text.trim()).filter(t => isNaN(parseInt(t, 10)));
+
+      if (nums.length < 7) return null; // 順位表の数値項目数不足
+
+      return {
+        id: 'l_' + Math.random().toString(36).substr(2, 9),
+        rank: nums[0] || 1,
+        club: texts.join(' ') || "Unknown Club",
+        played: nums[1] || 0,
+        won: nums[2] || 0,
+        drawn: nums[3] || 0,
+        lost: nums[4] || 0,
+        gf: nums[5] || 0,
+        ga: nums[6] || 0,
+        gd: nums[7] !== undefined ? nums[7] : (nums[5] - nums[6]),
+        points: nums[8] !== undefined ? nums[8] : (nums[2] * 3 + nums[3])
+      };
+    }
+
+    // =========================================================================
+    // 7. UIレンダリング & インタラクティブ編集
+    // =========================================================================
+    function renderSquadTable() {
+      const tbody = document.getElementById('squadTableBody');
+      const countEl = document.getElementById('playerCount');
+      tbody.innerHTML = '';
+      countEl.textContent = squadStore.length;
+
+      squadStore.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-800/60 transition-colors";
+
+        tr.innerHTML = `
+          <!-- POS -->
+          <td class="p-2 border-b border-r border-slate-700/60">
+            <input type="text" value="${p.position.val || ''}" 
+                   class="w-full bg-slate-900/90 text-center px-1 py-1 rounded border ${p.position.alert ? 'border-amber-500/80 bg-amber-950/40 text-amber-200' : 'border-slate-700'} text-xs font-mono uppercase"
+                   onchange="updateSquadCell('${p.id}', 'position', this.value)">
+          </td>
+          <!-- NAME -->
+          <td class="p-2 border-b border-r border-slate-700/60">
+            <input type="text" value="${p.name.val || ''}" 
+                   class="w-full bg-slate-900/90 px-2 py-1 rounded border ${!p.name.val ? 'border-rose-500 bg-rose-950/40' : 'border-slate-700'} text-xs"
+                   onchange="updateSquadCell('${p.id}', 'name', this.value)">
+          </td>
+          <!-- AGE -->
+          <td class="p-2 border-b border-r border-slate-700/60">
+            <input type="number" value="${p.age.val !== null ? p.age.val : ''}" 
+                   class="w-full bg-slate-900/90 text-center px-1 py-1 rounded border ${p.age.error ? 'border-rose-500 bg-rose-950/40 text-rose-200' : 'border-slate-700'} text-xs font-mono"
+                   onchange="updateSquadCell('${p.id}', 'age', this.value)">
+          </td>
+          <!-- VALUE -->
+          <td class="p-2 border-b border-r border-slate-700/60">
+            <input type="text" value="${p.value.val || ''}" 
+                   class="w-full bg-slate-900/90 px-2 py-1 rounded border ${p.value.conf < 0.7 ? 'border-amber-500/80 bg-amber-950/30' : 'border-slate-700'} text-xs font-mono text-emerald-300"
+                   onchange="updateSquadCell('${p.id}', 'value', this.value)">
+          </td>
+          <!-- WAGE -->
+          <td class="p-2 border-b border-r border-slate-700/60">
+            <input type="text" value="${p.wage.val || ''}" 
+                   class="w-full bg-slate-900/90 px-2 py-1 rounded border ${p.wage.conf < 0.7 ? 'border-amber-500/80 bg-amber-950/30' : 'border-slate-700'} text-xs font-mono text-emerald-300"
+                   onchange="updateSquadCell('${p.id}', 'wage', this.value)">
+          </td>
+          <!-- CONTRACT -->
+          <td class="p-2 border-b border-r border-slate-700/60">
+            <input type="text" value="${p.contract.raw || ''}" 
+                   class="w-full bg-slate-900/90 px-2 py-1 rounded border border-slate-700 text-xs"
+                   onchange="updateSquadCell('${p.id}', 'contract', this.value)">
+          </td>
+          <!-- ACTIONS -->
+          <td class="p-2 border-b border-slate-700/60 text-center">
+            <button onclick="deleteSquadRow('${p.id}')" class="bg-rose-900/40 hover:bg-rose-800 text-rose-200 border border-rose-700/50 px-2 py-1 rounded text-[10px] transition">
+              削除
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('squadResultSection').classList.remove('hidden');
+    }
+
+    function renderLeagueTable() {
+      const tbody = document.getElementById('leagueTableBody');
+      const countEl = document.getElementById('clubCount');
+      tbody.innerHTML = '';
+      countEl.textContent = leagueStore.length;
+
+      leagueStore.forEach(l => {
+        // 整合性チェック
+        const isMatchValid = (l.won + l.drawn + l.lost) === l.played;
+        const isGdValid = (l.gf - l.ga) === l.gd;
+        const isPtsValid = (l.won * 3 + l.drawn) === l.points;
+        const hasError = !isMatchValid || !isGdValid || !isPtsValid;
+
+        const tr = document.createElement('tr');
+        tr.className = `hover:bg-slate-800/60 transition-colors ${hasError ? 'bg-amber-950/20' : ''}`;
+
+        tr.innerHTML = `
+          <td class="p-1.5 border-b border-r border-slate-700 text-center font-mono">${l.rank}</td>
+          <td class="p-1.5 border-b border-r border-slate-700 font-semibold">${l.club}</td>
+          <td class="p-1.5 border-b border-r border-slate-700 text-center font-mono ${!isMatchValid ? 'text-amber-400 font-bold' : ''}">${l.played}</td>
+          <td class="p-1.5 border-b border-r border-slate-700 text-center font-mono">${l.won}</td>
+          <td class="p-1.5 border-b border-r border-slate-700 text-center font-mono">${l.drawn}</td>
+          <td class="p-1.5 border-b border-r border-slate-700 text-center font-mono">${l.lost}</td>
+          <td class="p-1.5 border-b border-r border-slate-700 text-center font-mono">${l.gf}</td>
+          <td class="p-1.5 border-b border-r border-slate-700 text-center font-mono">${l.ga}</td>
+          <td class="p-1.5 border-b border-r border-slate-700 text-center font-mono ${!isGdValid ? 'text-amber-400 font-bold' : ''}">${l.gd}</td>
+          <td class="p-1.5 border-b border-r border-slate-700 text-center font-mono font-bold text-emerald-400 ${!isPtsValid ? 'text-amber-400' : ''}">${l.points}</td>
+          <td class="p-1.5 border-b border-slate-700 text-center">
+            ${hasError ? '<span class="text-[10px] bg-amber-900/80 text-amber-200 px-1.5 py-0.5 rounded border border-amber-600">⚠️ 要確認</span>' : '<span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-1.5 py-0.5 rounded">正常</span>'}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('leagueResultSection').classList.remove('hidden');
+    }
+
+    // =========================================================================
+    // 8. リアルタイムセル更新 & 削除 & 重複統合
+    // =========================================================================
+    window.updateSquadCell = function(id, field, value) {
+      const p = squadStore.find(item => item.id === id);
+      if (!p) return;
+
+      if (field === 'position') {
+        p.position = normalizePosition(value);
+      } else if (field === 'name') {
+        p.name.val = value;
+      } else if (field === 'age') {
+        const parsed = parseInt(value, 10);
+        p.age.val = isNaN(parsed) ? null : parsed;
+        p.age.error = p.age.val === null;
+      } else if (field === 'value') {
+        p.value = parseMoney(value);
+      } else if (field === 'wage') {
+        p.wage = parseMoney(value);
+      } else if (field === 'contract') {
+        p.contract = parseContract(value);
+      }
+    };
+
+    window.deleteSquadRow = function(id) {
+      squadStore = squadStore.filter(p => p.id !== id);
+      renderSquadTable();
+    };
+
+    // 重複判定 & 自動統合機能
+    document.getElementById('btnDeduplicate').addEventListener('click', () => {
+      const alertContainer = document.getElementById('alertContainer');
+      alertContainer.innerHTML = '';
+
+      const nameMap = new Map();
+      let duplicatesFound = 0;
+
+      squadStore.forEach(p => {
+        if (!p.name.val) return;
+        const key = p.name.val.toLowerCase().trim();
+        if (nameMap.has(key)) {
+          duplicatesFound++;
+        } else {
+          nameMap.set(key, p);
+        }
+      });
+
+      if (duplicatesFound > 0) {
+        const alert = document.createElement('div');
+        alert.className = "bg-amber-900/40 border border-amber-600/60 p-3 rounded-lg text-amber-200 text-xs flex justify-between items-center";
+        alert.innerHTML = `
+          <span>⚠️ <strong>${duplicatesFound} 件</strong> の重複している選手（同名）が見つかりました。</span>
+          <button onclick="mergeDuplicates()" class="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded font-bold transition">
+            重複を統合する
+          </button>
+        `;
+        alertContainer.appendChild(alert);
+      } else {
+        alert("重複する選手は見つかりませんでした。");
+      }
+    });
+
+    window.mergeDuplicates = function() {
+      const uniqueMap = new Map();
+      squadStore.forEach(p => {
+        const key = (p.name.val || '').toLowerCase().trim();
+        if (!uniqueMap.has(key) || (p.value.val && !uniqueMap.get(key).value.val)) {
+          uniqueMap.set(key, p);
+        }
+      });
+      squadStore = Array.from(uniqueMap.values());
+      document.getElementById('alertContainer').innerHTML = '';
+      renderSquadTable();
+    };
+
+    // JSON出力
+    document.getElementById('btnExportJSON').addEventListener('click', () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(squadStore, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `fc26_squad_data_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    });
+  </script>
+</body>
+</html>
