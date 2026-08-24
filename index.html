@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FC26 Career Universe Manager</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans pb-24 md:pb-6">
+
+    <!-- Header Navigation -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 px-4 py-3 shadow-lg">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-emerald-500 text-slate-950 font-black px-2 py-1 rounded text-xs tracking-wider">FC26</div>
+                <h1 class="font-bold text-lg tracking-wide text-emerald-400">CAREER UNIVERSE</h1>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="openClubSettingsModal()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1 transition">
+                    <i data-lucide="settings" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">チーム設定</span>
+                </button>
+                <button onclick="exportData()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1 transition">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">書き出し</span>
+                </button>
+                <label class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1 cursor-pointer transition">
+                    <i data-lucide="upload" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">読み込み</span>
+                    <input type="file" onchange="importData(event)" class="hidden" accept=".json">
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <!-- App Container -->
+    <main class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+
+        <!-- Mobile View Navigation (Tabs) -->
+        <div class="col-span-12 md:hidden flex overflow-x-auto gap-2 border-b border-slate-800 pb-2 no-scrollbar text-sm">
+            <button onclick="switchTab('dashboard')" class="tab-btn bg-emerald-500 text-slate-950 font-bold px-4 py-2 rounded-lg shrink-0" id="tab-dashboard">ダッシュボード</button>
+            <button onclick="switchTab('universe')" class="tab-btn bg-slate-800 text-slate-300 font-medium px-4 py-2 rounded-lg shrink-0" id="tab-universe">Universe</button>
+            <button onclick="switchTab('sd-desk')" class="tab-btn bg-slate-800 text-slate-300 font-medium px-4 py-2 rounded-lg shrink-0" id="tab-sd-desk">SDデスク</button>
+            <button onclick="switchTab('squad')" class="tab-btn bg-slate-800 text-slate-300 font-medium px-4 py-2 rounded-lg shrink-0" id="tab-squad">選手管理</button>
+            <button onclick="switchTab('league')" class="tab-btn bg-slate-800 text-slate-300 font-medium px-4 py-2 rounded-lg shrink-0" id="tab-league">順位表</button>
+            <button onclick="switchTab('matches')" class="tab-btn bg-slate-800 text-slate-300 font-medium px-4 py-2 rounded-lg shrink-0" id="tab-matches">試合記録</button>
+        </div>
+
+        <!-- Sidebar Navigation (Desktop) -->
+        <aside class="hidden md:block md:col-span-3 lg:col-span-2 space-y-2">
+            <nav class="space-y-1 sticky top-20">
+                <button onclick="switchTab('dashboard')" id="side-dashboard" class="side-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl bg-emerald-500 text-slate-950 transition">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i> ダッシュボード
+                </button>
+                <button onclick="switchTab('universe')" id="side-universe" class="side-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 rounded-xl transition">
+                    <i data-lucide="globe" class="w-4 h-4"></i> Universe
+                </button>
+                <button onclick="switchTab('sd-desk')" id="side-sd-desk" class="side-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 rounded-xl transition">
+                    <i data-lucide="briefcase" class="w-4 h-4"></i> SDデスク
+                </button>
+                <button onclick="switchTab('squad')" id="side-squad" class="side-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 rounded-xl transition">
+                    <i data-lucide="users" class="w-4 h-4"></i> 選手管理
+                </button>
+                <button onclick="switchTab('league')" id="side-league" class="side-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 rounded-xl transition">
+                    <i data-lucide="list-ordered" class="w-4 h-4"></i> リーグ順位表
+                </button>
+                <button onclick="switchTab('matches')" id="side-matches" class="side-btn w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 rounded-xl transition">
+                    <i data-lucide="trophy" class="w-4 h-4"></i> 試合記録
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <section class="col-span-12 md:col-span-9 lg:col-span-10 space-y-6">
+
+            <!-- SECTION: Dashboard -->
+            <div id="section-dashboard" class="space-y-6">
+                <!-- Club Overview Header -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <div class="text-xs text-slate-400 font-medium">CLUB DASHBOARD</div>
+                        <h2 class="text-2xl font-black text-slate-100 tracking-wide" id="dash-club-name">---</h2>
+                        <div class="text-sm text-slate-400 mt-1">監督: <span class="text-slate-200 font-semibold" id="dash-manager-name">---</span> | シーズン: <span id="dash-season">---</span></div>
+                    </div>
+                    <div class="flex items-center gap-4 bg-slate-950 px-4 py-3 rounded-xl border border-slate-800/80">
+                        <div class="text-center">
+                            <div class="text-xs text-slate-500 font-semibold">現在順位</div>
+                            <div class="text-lg font-bold text-emerald-400" id="dash-current-pos">-位</div>
+                        </div>
+                        <div class="h-8 w-px bg-slate-800"></div>
+                        <div class="text-center">
+                            <div class="text-xs text-slate-500 font-semibold">登録選手</div>
+                            <div class="text-lg font-bold text-slate-200" id="dash-player-count">0名</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SD Report & Quick Alerts -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <h3 class="font-bold text-slate-200 flex items-center gap-2 text-sm">
+                                <i data-lucide="alert-circle" class="w-4 h-4 text-amber-400"></i> 人間関係・要注意ステータス
+                            </h3>
+                        </div>
+                        <div class="space-y-3" id="dash-alerts-container"></div>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <h3 class="font-bold text-slate-200 flex items-center gap-2 text-sm">
+                                <i data-lucide="newspaper" class="w-4 h-4 text-emerald-400"></i> メディア報道 & サポーターの反応
+                            </h3>
+                        </div>
+                        <div class="space-y-3" id="dash-news-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION: Universe -->
+            <div id="section-universe" class="hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100">Career Universe</h2>
+                        <p class="text-xs text-slate-400">クラブ内の心理・人間関係・政治的反応のリアルタイムマップ</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-slate-900 border border-rose-900/40 rounded-2xl p-4 space-y-3">
+                        <span class="text-xs font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span> 要対応 (Urgent)
+                        </span>
+                        <div class="space-y-2" id="universe-urgent"></div>
+                    </div>
+                    <div class="bg-slate-900 border border-amber-900/40 rounded-2xl p-4 space-y-3">
+                        <span class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-amber-500"></span> 注意 (Warning)
+                        </span>
+                        <div class="space-y-2" id="universe-warning"></div>
+                    </div>
+                    <div class="bg-slate-900 border border-emerald-900/40 rounded-2xl p-4 space-y-3">
+                        <span class="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 良好 (Stable)
+                        </span>
+                        <div class="space-y-2" id="universe-stable"></div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                    <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                        <i data-lucide="history" class="w-4 h-4 text-emerald-400"></i> Career Timeline (シミュレーション履歴)
+                    </h3>
+                    <div class="border-l-2 border-slate-800 pl-4 space-y-4 text-xs text-slate-300" id="universe-timeline"></div>
+                </div>
+            </div>
+
+            <!-- SECTION: SD Desk & Interactive Meeting -->
+            <div id="section-sd-desk" class="hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100">スポーツディレクター (SD) デスク</h2>
+                        <p class="text-xs text-slate-400">内部報告の確認、インタラクティブ面談・外部AI用コンテキスト作成</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                        <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2 border-b border-slate-800 pb-3">
+                            <i data-lucide="file-text" class="w-4 h-4 text-amber-400"></i> 【SD機密レポート】
+                        </h3>
+                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs leading-relaxed space-y-3 text-slate-300" id="sd-memo-body"></div>
+                        <button onclick="runSimulationStep()" class="w-full text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-3 py-2 rounded-xl transition border border-slate-700">
+                            チーム状態を再評価（シミュレーション）
+                        </button>
+                    </div>
+
+                    <!-- Free Chat / Dialogue Console -->
+                    <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                                <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                                    <i data-lucide="message-square" class="w-4 h-4 text-emerald-400"></i> 選手面談・対話ルーム
+                                </h3>
+                                <div class="flex gap-2">
+                                    <select id="meeting-player-select" onchange="initChatRoom()" class="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Chat History Container -->
+                            <div id="chat-container" class="mt-4 bg-slate-950 p-4 rounded-xl border border-slate-800 h-64 overflow-y-auto space-y-3 text-xs">
+                                <div class="text-slate-500 text-center text-[11px]">面談対象の選手を選択してメッセージを送信してください。</div>
+                            </div>
+                        </div>
+
+                        <!-- Chat Input & Tools -->
+                        <div class="space-y-2 pt-3">
+                            <div class="flex gap-2">
+                                <input type="text" id="chat-input" placeholder="監督として発言する..." onkeydown="if(event.key==='Enter') sendChatMessage()" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <button onclick="sendChatMessage()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition">送信</button>
+                            </div>
+                            <div class="flex items-center justify-between text-[11px]">
+                                <button onclick="copyLLMPrompt()" class="text-amber-400 hover:underline flex items-center gap-1">
+                                    <i data-lucide="copy" class="w-3 h-3"></i> 外部ChatGPT/Gemini用プロンプトをコピー
+                                </button>
+                                <button onclick="applyChatResultModal()" class="text-slate-400 hover:text-slate-200 underline">面談結果を手動反映</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION: Squad Management -->
+            <div id="section-squad" class="hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100">選手一覧・ステータス管理</h2>
+                        <p class="text-xs text-slate-400">現在シーズンの選手能力値・役割・満足度の統合管理</p>
+                    </div>
+                    <button onclick="openAddPlayerModal()" class="text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i> 選手追加
+                    </button>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-950 text-slate-400 border-b border-slate-800 font-semibold">
+                                <tr>
+                                    <th class="p-3.5">選手名</th>
+                                    <th class="p-3.5">Pos</th>
+                                    <th class="p-3.5">OVR</th>
+                                    <th class="p-3.5">役割</th>
+                                    <th class="p-3.5">直近10試合先発</th>
+                                    <th class="p-3.5">不満レベル</th>
+                                    <th class="p-3.5">監督信頼度</th>
+                                    <th class="p-3.5 text-right">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800/60" id="squad-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION: League Standings (Season Specific) -->
+            <div id="section-league" class="hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100">リーグ順位表</h2>
+                        <p class="text-xs text-slate-400">シーズンごとの順位・勝点データの管理</p>
+                    </div>
+                    <button onclick="openLeagueEditModal()" class="text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
+                        <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> 順位表の更新
+                    </button>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-950 text-slate-400 border-b border-slate-800 font-semibold">
+                                <tr>
+                                    <th class="p-3.5 w-12 text-center">順位</th>
+                                    <th class="p-3.5">クラブ</th>
+                                    <th class="p-3.5">試合</th>
+                                    <th class="p-3.5">勝</th>
+                                    <th class="p-3.5">分</th>
+                                    <th class="p-3.5">負</th>
+                                    <th class="p-3.5">得失</th>
+                                    <th class="p-3.5 font-bold text-emerald-400">勝点</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800/60" id="league-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION: Match Records -->
+            <div id="section-matches" class="hidden space-y-6">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100">試合結果の入力・記録</h2>
+                        <p class="text-xs text-slate-400">入力された公式データのみを絶対的ファクトとして処理します</p>
+                    </div>
+                    <button onclick="openAddMatchModal()" class="text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3 py-2 rounded-xl transition flex items-center gap-1">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i> 試合入力
+                    </button>
+                </div>
+
+                <div class="space-y-3" id="matches-container"></div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- MODAL: Club & Season Settings -->
+    <div id="modal-club-settings" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+            <h3 class="text-lg font-bold text-slate-100 border-b border-slate-800 pb-2">チーム・シーズン設定</h3>
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">クラブ名</label>
+                    <input type="text" id="setting-club-name" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">監督名</label>
+                    <input type="text" id="setting-manager-name" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">現在のシーズン</label>
+                    <input type="text" id="setting-season" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200" placeholder="2026/27">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeModal('modal-club-settings')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs">キャンセル</button>
+                <button onclick="saveClubSettings()" class="px-4 py-2 bg-emerald-500 text-slate-950 font-bold rounded-xl text-xs">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Add Player -->
+    <div id="modal-add-player" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+            <h3 class="text-lg font-bold text-slate-100 border-b border-slate-800 pb-2">新規選手登録</h3>
+            <div class="grid grid-cols-2 gap-3 text-xs">
+                <div class="col-span-2">
+                    <label class="block text-slate-400 mb-1">選手名</label>
+                    <input type="text" id="new-player-name" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">ポジション</label>
+                    <input type="text" id="new-player-pos" placeholder="ST, LW, CDM etc." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">OVR (能力値)</label>
+                    <input type="number" id="new-player-ovr" value="75" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-slate-400 mb-1">役割</label>
+                    <select id="new-player-role" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200">
+                        <option value="キープレイヤー">キープレイヤー</option>
+                        <option value="主力">主力</option>
+                        <option value="準レギュラー">準レギュラー</option>
+                        <option value="控え">控え</option>
+                        <option value="若手望み">若手の望み</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeModal('modal-add-player')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs">キャンセル</button>
+                <button onclick="saveNewPlayer()" class="px-4 py-2 bg-emerald-500 text-slate-950 font-bold rounded-xl text-xs">追加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Bottom Nav -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 px-3 py-2 flex justify-around items-center z-40">
+        <button onclick="switchTab('dashboard')" class="flex flex-col items-center gap-1 text-slate-400 hover:text-emerald-400 text-[10px]">
+            <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dash
+        </button>
+        <button onclick="switchTab('universe')" class="flex flex-col items-center gap-1 text-slate-400 hover:text-emerald-400 text-[10px]">
+            <i data-lucide="globe" class="w-5 h-5"></i> Universe
+        </button>
+        <button onclick="switchTab('sd-desk')" class="flex flex-col items-center gap-1 text-slate-400 hover:text-emerald-400 text-[10px]">
+            <i data-lucide="briefcase" class="w-5 h-5"></i> SD Desk
+        </button>
+        <button onclick="switchTab('squad')" class="flex flex-col items-center gap-1 text-slate-400 hover:text-emerald-400 text-[10px]">
+            <i data-lucide="users" class="w-5 h-5"></i> Squad
+        </button>
+        <button onclick="switchTab('league')" class="flex flex-col items-center gap-1 text-slate-400 hover:text-emerald-400 text-[10px]">
+            <i data-lucide="list-ordered" class="w-5 h-5"></i> League
+        </button>
+    </nav>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        const INITIAL_STATE = {
+            club: { name: "Valencia CF", manager: "Rafael Benítez", season: "2026/27" },
+            players: [
+                { id: "1", name: "Javi Guerra", pos: "CM", ovr: 78, role: "主力", startsLast10: 8, dissatisfaction: 1, trust: 4 },
+                { id: "2", name: "Hugo Duro", pos: "ST", ovr: 77, role: "キープレイヤー", startsLast10: 3, dissatisfaction: 3, trust: 2 }
+            ],
+            leagueStandings: {
+                "2026/27": [
+                    { pos: 1, club: "Real Madrid", played: 10, won: 8, drawn: 1, lost: 1, gd: +15, pts: 25 },
+                    { pos: 2, club: "FC Barcelona", played: 10, won: 7, drawn: 2, lost: 1, gd: +12, pts: 23 },
+                    { pos: 3, club: "Valencia CF", played: 10, won: 6, drawn: 2, lost: 2, gd: +6, pts: 20 }
+                ]
+            },
+            chats: {}, // Chat histories per player
+            matches: [],
+            timeline: [
+                { date: "2026/08/25", event: "新しいシーズンデータが作成されました。" }
+            ]
+        };
+
+        let appData = JSON.parse(localStorage.getItem('fc26_universe_data')) || INITIAL_STATE;
+
+        function saveData() {
+            localStorage.setItem('fc26_universe_data', JSON.stringify(appData));
+            renderAll();
+        }
+
+        function switchTab(tabId) {
+            ['dashboard', 'universe', 'sd-desk', 'squad', 'league', 'matches'].forEach(tab => {
+                document.getElementById(`section-${tab}`)?.classList.add('hidden');
+                document.getElementById(`tab-${tab}`)?.classList.replace('bg-emerald-500', 'bg-slate-800');
+                document.getElementById(`tab-${tab}`)?.classList.replace('text-slate-950', 'text-slate-300');
+                const sideBtn = document.getElementById(`side-${tab}`);
+                if (sideBtn) sideBtn.classList.replace('bg-emerald-500', 'text-slate-400');
+            });
+
+            document.getElementById(`section-${tabId}`)?.classList.remove('hidden');
+            document.getElementById(`tab-${tabId}`)?.classList.replace('bg-slate-800', 'bg-emerald-500');
+            document.getElementById(`tab-${tabId}`)?.classList.replace('text-slate-300', 'text-slate-950');
+            const activeSideBtn = document.getElementById(`side-${tabId}`);
+            if (activeSideBtn) activeSideBtn.classList.add('bg-emerald-500', 'text-slate-950');
+        }
+
+        // Render Application State
+        function renderAll() {
+            // Dashboard Header
+            document.getElementById('dash-club-name').innerText = appData.club.name;
+            document.getElementById('dash-manager-name').innerText = appData.club.manager;
+            document.getElementById('dash-season').innerText = appData.club.season;
+            document.getElementById('dash-player-count').innerText = `${appData.players.length}名`;
+
+            const currentSeasonLeague = appData.leagueStandings[appData.club.season] || [];
+            const myRank = currentSeasonLeague.find(l => l.club === appData.club.name);
+            document.getElementById('dash-current-pos').innerText = myRank ? `${myRank.pos}位` : '-位';
+
+            // Alerts
+            document.getElementById('dash-alerts-container').innerHTML = appData.players
+                .filter(p => p.dissatisfaction > 1)
+                .map(p => `
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
+                        <div>
+                            <div class="font-bold text-slate-200">${p.name} (${p.pos})</div>
+                            <div class="text-[11px] text-amber-400 mt-0.5">不満度: ${'★'.repeat(p.dissatisfaction)} (直近先発: ${p.startsLast10}/10)</div>
+                        </div>
+                        <button onclick="switchTab('sd-desk')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-lg border border-slate-700">面談へ</button>
+                    </div>
+                `).join('') || '<div class="text-xs text-slate-500">現在、不満を抱えている選手はいません。</div>';
+
+            // League Table
+            document.getElementById('league-table-body').innerHTML = currentSeasonLeague.map(l => `
+                <tr class="${l.club === appData.club.name ? 'bg-emerald-950/40 font-bold' : ''}">
+                    <td class="p-3.5 text-center font-bold text-slate-400">${l.pos}</td>
+                    <td class="p-3.5 text-slate-200">${l.club}</td>
+                    <td class="p-3.5 text-slate-400">${l.played}</td>
+                    <td class="p-3.5 text-slate-400">${l.won}</td>
+                    <td class="p-3.5 text-slate-400">${l.drawn}</td>
+                    <td class="p-3.5 text-slate-400">${l.lost}</td>
+                    <td class="p-3.5 text-slate-400">${l.gd > 0 ? '+' + l.gd : l.gd}</td>
+                    <td class="p-3.5 text-emerald-400 font-bold">${l.pts}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="8" class="p-4 text-center text-slate-500">順位表データが登録されていません。</td></tr>';
+
+            // Squad Table
+            document.getElementById('squad-table-body').innerHTML = appData.players.map(p => `
+                <tr class="hover:bg-slate-800/30">
+                    <td class="p-3.5 font-bold text-slate-200">${p.name}</td>
+                    <td class="p-3.5"><span class="bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-300">${p.pos}</span></td>
+                    <td class="p-3.5 font-semibold text-emerald-400">${p.ovr}</td>
+                    <td class="p-3.5 text-slate-400">${p.role}</td>
+                    <td class="p-3.5 text-slate-300">${p.startsLast10} / 10</td>
+                    <td class="p-3.5 text-amber-400">${'★'.repeat(p.dissatisfaction)}</td>
+                    <td class="p-3.5 text-slate-300">${p.trust} / 5</td>
+                    <td class="p-3.5 text-right"><button onclick="deletePlayer('${p.id}')" class="text-rose-400 hover:text-rose-300">削除</button></td>
+                </tr>
+            `).join('');
+
+            // Select Dropdown for Meeting
+            const select = document.getElementById('meeting-player-select');
+            select.innerHTML = appData.players.map(p => `<option value="${p.id}">${p.name} (${p.pos})</option>`).join('');
+
+            initChatRoom();
+            lucide.createIcons();
+        }
+
+        // Free Chat System Logic
+        function initChatRoom() {
+            const playerId = document.getElementById('meeting-player-select').value;
+            if (!playerId) return;
+            const history = appData.chats[playerId] || [];
+            const container = document.getElementById('chat-container');
+
+            if (history.length === 0) {
+                const p = appData.players.find(x => x.id === playerId);
+                container.innerHTML = `<div class="bg-slate-900 p-3 rounded-xl border border-slate-800 text-slate-300 italic">「監督、お時間ありがとうございます。直近の私の起用状況についてお話ししたいのですが...」</div>`;
+            } else {
+                container.innerHTML = history.map(c => `
+                    <div class="flex flex-col ${c.role === 'manager' ? 'items-end' : 'items-start'}">
+                        <div class="text-[10px] text-slate-500 mb-0.5">${c.role === 'manager' ? '監督' : '選手'}</div>
+                        <div class="px-3 py-2 rounded-xl text-xs max-w-[80%] ${c.role === 'manager' ? 'bg-emerald-600 text-slate-950 font-medium' : 'bg-slate-800 text-slate-200'}">
+                            ${c.text}
+                        </div>
+                    </div>
+                `).join('');
+            }
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function sendChatMessage() {
+            const playerId = document.getElementById('meeting-player-select').value;
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!playerId || !text) return;
+
+            if (!appData.chats[playerId]) appData.chats[playerId] = [];
+            appData.chats[playerId].push({ role: 'manager', text: text });
+            
+            // Basic automated response simulation
+            const p = appData.players.find(x => x.id === playerId);
+            setTimeout(() => {
+                appData.chats[playerId].push({ 
+                    role: 'player', 
+                    text: `（${p.name}）「お話しできてよかったです。監督のお考えは理解しました。ピッチで示せるよう準備します。」` 
+                });
+                saveData();
+            }, 500);
+
+            input.value = '';
+            saveData();
+        }
+
+        function copyLLMPrompt() {
+            const playerId = document.getElementById('meeting-player-select').value;
+            const p = appData.players.find(x => x.id === playerId);
+            const history = appData.chats[playerId] || [];
+            
+            const prompt = `あなたはFC26キャリアモードにおける選手「${p.name}」（ポジション:${p.pos}, OVR:${p.ovr}, 役割:${p.role}）です。
+現在の状況: 直近10試合中先発${p.startsLast10}試合、不満レベル${p.dissatisfaction}/5、監督信頼度${p.trust}/5。
+監督: ${appData.club.manager} (${appData.club.name})
+
+これまでの会話履歴:
+${history.map(h => `${h.role === 'manager' ? '監督' : p.name}: ${h.text}`).join('\n')}
+
+上記のコンテキストを踏まえ、監督の発言に対する${p.name}本人のリアルな回答文を作成してください。`;
+
+            navigator.clipboard.writeText(prompt);
+            alert('ChatGPT/Gemini等に入力するためのプロンプトをクリップボードにコピーしました！');
+        }
+
+        // Modals & Settings Management
+        function openClubSettingsModal() {
+            document.getElementById('setting-club-name').value = appData.club.name;
+            document.getElementById('setting-manager-name').value = appData.club.manager;
+            document.getElementById('setting-season').value = appData.club.season;
+            document.getElementById('modal-club-settings').classList.remove('hidden');
+        }
+
+        function saveClubSettings() {
+            appData.club.name = document.getElementById('setting-club-name').value;
+            appData.club.manager = document.getElementById('setting-manager-name').value;
+            appData.club.season = document.getElementById('setting-season').value;
+            closeModal('modal-club-settings');
+            saveData();
+        }
+
+        function openAddPlayerModal() {
+            document.getElementById('modal-add-player').classList.remove('hidden');
+        }
+
+        function saveNewPlayer() {
+            const name = document.getElementById('new-player-name').value;
+            const pos = document.getElementById('new-player-pos').value;
+            const ovr = parseInt(document.getElementById('new-player-ovr').value);
+            const role = document.getElementById('new-player-role').value;
+
+            if (!name || !pos) return;
+
+            appData.players.push({
+                id: Date.now().toString(),
+                name, pos, ovr, role,
+                startsLast10: 5, dissatisfaction: 0, trust: 3
+            });
+
+            closeModal('modal-add-player');
+            saveData();
+        }
+
+        function deletePlayer(id) {
+            appData.players = appData.players.filter(p => p.id !== id);
+            saveData();
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function runSimulationStep() {
+            appData.players.forEach(p => {
+                if (p.role === "キープレイヤー" && p.startsLast10 <= 4) {
+                    p.dissatisfaction = Math.min(5, p.dissatisfaction + 1);
+                }
+            });
+            saveData();
+        }
+
+        function exportData() {
+            const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `FC26_Universe_${appData.club.name}_${appData.club.season}.json`;
+            a.click();
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    appData = JSON.parse(e.target.result);
+                    saveData();
+                } catch (err) {
+                    alert('ファイルの読み込みに失敗しました。');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        window.addEventListener('DOMContentLoaded', renderAll);
+    </script>
+</body>
+</html>
