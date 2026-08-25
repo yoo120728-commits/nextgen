@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FC26 Manager Career Simulation App</title>
+<style>
+  :root {
+    --bg-main: #0f172a;
+    --bg-card: #1e293b;
+    --bg-hover: #334155;
+    --accent: #10b981;
+    --accent-hover: #059669;
+    --text: #f8fafc;
+    --text-muted: #94a3b8;
+    --border: #334155;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+  body { background-color: var(--bg-main); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+  header {
+    background-color: var(--bg-card);
+    padding: 1rem 2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .app-title { font-size: 1.25rem; font-weight: bold; color: var(--accent); display: flex; align-items: center; gap: 0.5rem; }
+  .status-bar { display: flex; gap: 1.5rem; font-size: 0.9rem; background: var(--bg-main); padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid var(--border); }
+  .status-item span { color: var(--accent); font-weight: bold; }
+
+  nav {
+    background-color: var(--bg-card);
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .nav-btn {
+    padding: 1rem 1.5rem;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+  }
+  .nav-btn:hover { color: var(--text); background-color: var(--bg-hover); }
+  .nav-btn.active { color: var(--accent); border-bottom-color: var(--accent); background-color: rgba(16, 185, 129, 0.05); }
+
+  main { flex: 1; padding: 2rem; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .card { background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .card-title { font-size: 1.1rem; font-weight: bold; margin-bottom: 1rem; color: var(--accent); display: flex; align-items: center; justify-content: space-between; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+
+  @media (max-width: 900px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+
+  /* Forms */
+  .form-group { margin-bottom: 1rem; }
+  label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.4rem; font-weight: 500; }
+  input, select, textarea {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    background-color: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+  .btn {
+    padding: 0.6rem 1.2rem;
+    background-color: var(--accent);
+    color: #000;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn:hover { background-color: var(--accent-hover); }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { background-color: var(--bg-hover); }
+
+  /* Personality Sliders */
+  .trait-slider { margin-bottom: 1rem; }
+  .trait-labels { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 0.2rem; }
+  .slider-val { text-align: center; font-size: 0.8rem; color: var(--accent); }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+  th, td { padding: 0.75rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-muted); font-weight: 600; background-color: rgba(0,0,0,0.2); }
+  tr:hover { background-color: var(--bg-hover); }
+
+  /* Chat UI */
+  .chat-box { height: 350px; border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-y: auto; background-color: var(--bg-main); display: flex; flex-direction: column; gap: 0.8rem; }
+  .chat-msg { max-width: 80%; padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.9rem; line-height: 1.4; }
+  .chat-msg.player { background-color: var(--bg-card); border: 1px solid var(--border); align-self: flex-start; }
+  .chat-msg.manager { background-color: #064e3b; color: #a7f3d0; align-self: flex-end; }
+  .chat-msg .name { font-size: 0.75rem; opacity: 0.7; margin-bottom: 0.2rem; font-weight: bold; }
+
+  /* Pitch & Squad Display */
+  .pitch-container { background: #14532d; border: 2px solid #22c55e; border-radius: 8px; padding: 1.5rem; position: relative; min-height: 380px; display: flex; flex-direction: column; justify-content: space-between; }
+  .pitch-line { border-bottom: 1px dashed rgba(255,255,255,0.2); margin: 0.5rem 0; }
+  .pitch-row { display: flex; justify-content: space-around; margin: 0.5rem 0; }
+  .player-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; text-align: center; width: 100px; font-size: 0.8rem; cursor: pointer; transition: transform 0.2s; }
+  .player-card:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .player-card .pos { font-weight: bold; color: var(--accent); }
+
+  .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+  .badge-success { background-color: rgba(16, 185, 129, 0.2); color: #34d399; }
+  .badge-warning { background-color: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+
+  /* Pre-start overlay */
+  #setup-wizard { display: block; }
+  #main-app { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="app-title">⚽ FC26 Immersive Career Simulation</div>
+  <div class="status-bar" id="top-status-bar" style="display:none;">
+    <div class="status-item">クラブ: <span id="hdr-club">-</span></div>
+    <div class="status-item">監督: <span id="hdr-manager">-</span></div>
+    <div class="status-item">予算: <span id="hdr-budget">-</span></div>
+    <div class="status-item">信頼度: <span id="hdr-trust">85%</span></div>
+  </div>
+</header>
+
+<main>
+  <!-- SETUP WIZARD -->
+  <div id="setup-wizard">
+    <div class="card">
+      <div class="card-title">1. 監督プロファイルの作成</div>
+      <div class="grid-2">
+        <div>
+          <div class="form-group">
+            <label>監督名</label>
+            <input type="text" id="mgr-name" value="山田 太郎" placeholder="例: Hansi Flick">
+          </div>
+          <div class="form-group">
+            <label>年齢 / 出身地</label>
+            <div style="display:flex; gap: 0.5rem;">
+              <input type="number" id="mgr-age" value="45" style="width: 80px;">
+              <input type="text" id="mgr-origin" value="日本" placeholder="出身国・地域">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>キャリア背景 (複数選択可)</label>
+            <input type="text" id="mgr-history" value="選手時代: TSG 1899 Hoffenheim, AC: FC Bayern" placeholder="現役時代の所属、AC経歴など">
+          </div>
+        </div>
+
+        <div>
+          <label style="margin-bottom:0.8rem;">性格パラメータ (5段階評価)</label>
+          <div class="trait-slider">
+            <div class="trait-labels"><span>規律 (1)</span><span>放任 (5)</span></div>
+            <input type="range" min="1" max="5" value="2" id="trait-discipline">
+          </div>
+          <div class="trait-slider">
+            <div class="trait-labels"><span>情熱 (1)</span><span>冷静 (5)</span></div>
+            <input type="range" min="1" max="5" value="3" id="trait-passion">
+          </div>
+          <div class="trait-slider">
+            <div class="trait-labels"><span>フレンドリー (1)</span><span>厳格 (5)</span></div>
+            <input type="range" min="1" max="5" value="2" id="trait-friendly">
+          </div>
+          <div class="trait-slider">
+            <div class="trait-labels"><span>育成重視 (1)</span><span>補強重視 (5)</span></div>
+            <input type="range" min="1" max="5" value="2" id="trait-youth">
+          </div>
+          <div class="trait-slider">
+            <div class="trait-labels"><span>固執 (1)</span><span>柔軟 (5)</span></div>
+            <input type="range" min="1" max="5" value="4" id="trait-flexible">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">2. クラブ選択 &amp; リーグ設定</div>
+      <div class="grid-2">
+        <div>
+          <div class="form-group">
+            <label>リーグ</label>
+            <select id="league-select" onchange="updateTeamOptions()">
+              <option value="Premier League">プレミアリーグ (38試合)</option>
+              <option value="La Liga">ラ・リーガ (38試合)</option>
+              <option value="Bundesliga">ブンデスリーガ (34試合)</option>
+              <option value="Serie A">セリエA (38試合)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>チーム</label>
+            <select id="team-select"></select>
+          </div>
+        </div>
+        <div>
+          <div class="form-group">
+            <label>初期移籍予算 (€)</label>
+            <input type="text" id="mgr-budget" value="€85,000,000">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">3. スカッドの一括登録 (タブ区切り/コピペ対応)</div>
+      <div class="form-group">
+        <label>POS | 名前 | 年齢 | 価値 | 給与 | 契約年数 の形式で貼り付け</label>
+        <textarea id="squad-input" rows="5">CAM	M. Rogers	25	€75.5M	€175.00K	3年1ヶ月
+CDM	B. Kamara	28	€59.5M	€180.00K	2年1ヶ月
+ST	O. Watkins	28	€65.0M	€130.00K	4年0ヶ月
+CB	P. Torres	27	€45.0M	€100.00K	3年6ヶ月
+GK	E. Martínez	32	€28.0M	€120.00K	2年0ヶ月</textarea>
+      </div>
+      <button class="btn" onclick="initSimulation()">キャリアモードを開始する</button>
+    </div>
+  </div>
+
+  <!-- MAIN APP INTERFACE -->
+  <div id="main-app">
+    <nav>
+      <button class="nav-btn active" onclick="switchTab('match')">1. マッチ</button>
+      <button class="nav-btn" onclick="switchTab('board')">2. 会議室</button>
+      <button class="nav-btn" onclick="switchTab('locker')">3. ロッカールーム</button>
+      <button class="nav-btn" onclick="switchTab('media')">4. 取材室</button>
+      <button class="nav-btn" onclick="switchTab('office')">5. 監督室</button>
+      <button class="nav-btn" onclick="switchTab('archives')">6. 編纂室</button>
+    </nav>
+
+    <!-- 1. MATCH TAB -->
+    <div id="tab-match" class="tab-content active" style="margin-top: 1.5rem;">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">試合結果の報告</div>
+          <div class="form-group grid-2">
+            <div>
+              <label>日付</label>
+              <input type="date" value="2026-08-22">
+            </div>
+            <div>
+              <label>対戦相手</label>
+              <select id="match-opponent">
+                <option>Arsenal</option>
+                <option>Chelsea</option>
+                <option>Liverpool</option>
+                <option>Manchester City</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group grid-2">
+            <div>
+              <label>H / A</label>
+              <select><option>Home</option><option>Away</option></select>
+            </div>
+            <div>
+              <label>スコア (自チーム - 相手)</label>
+              <div style="display:flex; gap:0.5rem; align-items:center;">
+                <input type="number" value="2" style="width:60px; text-align:center;">
+                -
+                <input type="number" value="1" style="width:60px; text-align:center;">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>スタメン &amp; インパクトデータ記録</label>
+            <table>
+              <thead>
+                <tr><th>POS</th><th>選手名</th><th>Rating</th><th>キーパス</th><th>デュエル勝率</th></tr>
+              </thead>
+              <tbody id="match-squad-body"></tbody>
+            </table>
+          </div>
+
+          <button class="btn" onclick="submitMatch()">試合結果を確定してAI分析実行</button>
+        </div>
+
+        <div>
+          <div class="card">
+            <div class="card-title">フォーメーション &amp; 途中交代 (Drag &amp; Drop / Click)</div>
+            <div class="pitch-container">
+              <div class="pitch-row">
+                <div class="player-card"><div class="pos">ST</div>O. Watkins</div>
+              </div>
+              <div class="pitch-row">
+                <div class="player-card"><div class="pos">CAM</div>M. Rogers</div>
+              </div>
+              <div class="pitch-row">
+                <div class="player-card"><div class="pos">CDM</div>B. Kamara</div>
+              </div>
+              <div class="pitch-row">
+                <div class="player-card"><div class="pos">CB</div>P. Torres</div>
+              </div>
+              <div class="pitch-row">
+                <div class="player-card"><div class="pos">GK</div>E. Martínez</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" id="match-ai-feed" style="display:none;">
+            <div class="card-title">🤖 AI シミュレーションフィードバック</div>
+            <p id="match-ai-text" style="font-size:0.9rem; line-height:1.6; color: #cbd5e1;"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. BOARDROOM TAB -->
+    <div id="tab-board" class="tab-content" style="margin-top: 1.5rem;">
+      <div class="card">
+        <div class="card-title">移籍オフィス (Transfer Boardroom)</div>
+        <div class="grid-2">
+          <div>
+            <div class="form-group">
+              <label>対象選手</label>
+              <select id="board-player-select"></select>
+            </div>
+            <div class="form-group">
+              <label>オファー元クラブ</label>
+              <select>
+                <option>Real Madrid</option>
+                <option>FC Bayern München</option>
+                <option>Paris Saint-Germain</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>提示移籍金 (€)</label>
+              <input type="text" value="€80,000,000">
+            </div>
+            <div style="display:flex; gap:0.5rem;">
+              <button class="btn" onclick="processTransfer('accept')">フロント売却容認</button>
+              <button class="btn btn-outline" onclick="processTransfer('counter')">カウンターオファー</button>
+              <button class="btn btn-outline" style="border-color:var(--danger); color:var(--danger);" onclick="processTransfer('reject')">即時却下</button>
+            </div>
+          </div>
+
+          <div>
+            <label>フロント / 選手シミュレーションログ</label>
+            <div class="chat-box" id="board-log">
+              <div class="chat-msg player">
+                <div class="name">フロント理事会</div>
+                「M. Rogers に対する €80.0M のオファーを検証中です。チームのキーマンですが、市場価値を大きく上回る提案です。」
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. LOCKER ROOM TAB -->
+    <div id="tab-locker" class="tab-content" style="margin-top: 1.5rem;">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">選手個別の面談 &amp; モチベーション</div>
+          <div class="form-group">
+            <label>選手を選択</label>
+            <select id="locker-player-select" onchange="loadLockerChat()"></select>
+          </div>
+
+          <div style="margin-bottom: 1rem;">
+            <span class="badge badge-success" id="locker-status">モチベーション: 高い</span>
+            <span class="badge badge-warning">要求: 出場機会増加</span>
+          </div>
+
+          <div class="chat-box" id="locker-chat-box">
+            <div class="chat-msg player">
+              <div class="name" id="chat-player-name">M. Rogers</div>
+              「ボス、次のビッグマッチでは僕をスタメンで使ってくれますか？調子は最高なんです。」
+            </div>
+          </div>
+
+          <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+            <input type="text" id="locker-input" placeholder="監督としてメッセージを入力 (フリーチャット)...">
+            <button class="btn" onclick="sendLockerMessage()">送信</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">チーム内ダイナミクス (序列・不満リスク)</div>
+          <table>
+            <thead>
+              <tr><th>選手</th><th>役割</th><th>不満度</th><th>状態</th></tr>
+            </thead>
+            <tbody id="locker-dynamics-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. MEDIA TAB -->
+    <div id="tab-media" class="tab-content" style="margin-top: 1.5rem;">
+      <div class="card">
+        <div class="card-title">公式記者会見 (取材室)</div>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">試合後のコメントやチーム状況についての回答が、メディア記事および選手のモチベーションに影響を与えます。</p>
+
+        <div class="chat-box" id="media-chat-box">
+          <div class="chat-msg player">
+            <div class="name">Sky Sports 記者</div>
+            「素晴らしい勝利でした、監督！今日の M. Rogers の圧巻のパフォーマンスについて一言お願いします。」
+          </div>
+        </div>
+
+        <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+          <input type="text" id="media-input" placeholder="監督の回答を入力...">
+          <button class="btn" onclick="sendMediaAnswer()">回答して記事生成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. OFFICE TAB -->
+    <div id="tab-office" class="tab-content" style="margin-top: 1.5rem;">
+      <div class="card">
+        <div class="card-title">FCIQ 戦術 &amp; 内部序列設定 (監督室)</div>
+        <table>
+          <thead>
+            <tr><th>名前</th><th>POS</th><th>FCIQ ロール</th><th>内部序列 (非公開)</th></tr>
+          </thead>
+          <tbody id="office-squad-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 6. ARCHIVES TAB -->
+    <div id="tab-archives" class="tab-content" style="margin-top: 1.5rem;">
+      <div class="card">
+        <div class="card-title">編纂室 (Archives &amp; News)</div>
+        <div id="news-archive">
+          <div style="border-left: 3px solid var(--accent); padding-left: 1rem; margin-bottom: 1rem;">
+            <div style="font-size:0.8rem; color:var(--text-muted);">2026-08-22 | Daily Football News</div>
+            <div style="font-weight:bold; margin:0.2rem 0;">新監督の采配が光り開幕戦白星スタート！</div>
+            <p style="font-size:0.85rem; color:var(--text-muted);">新しく着任した監督の戦術的柔軟性が光り、チームは見事勝利を収めた...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  let appState = {
+    manager: {},
+    team: '',
+    league: '',
+    budget: '',
+    squad: []
+  };
+
+  const teamsByLeague = {
+    'Premier League': ['Aston Villa', 'Arsenal', 'Chelsea', 'Liverpool', 'Manchester City'],
+    'La Liga': ['Real Madrid', 'FC Barcelona', 'Atlético de Madrid', 'Valencia CF'],
+    'Bundesliga': ['FC Bayern München', 'Borussia Dortmund', 'FC Schalke 04', 'Bayer 04 Leverkusen'],
+    'Serie A': ['Inter', 'AC Milan', 'Juventus']
+  };
+
+  function updateTeamOptions() {
+    const league = document.getElementById('league-select').value;
+    const teamSelect = document.getElementById('team-select');
+    teamSelect.innerHTML = '';
+    teamsByLeague[league].forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t; opt.textContent = t;
+      teamSelect.appendChild(opt);
+    });
+  }
+  updateTeamOptions();
+
+  function initSimulation() {
+    appState.manager = {
+      name: document.getElementById('mgr-name').value,
+      age: document.getElementById('mgr-age').value,
+      origin: document.getElementById('mgr-origin').value,
+      history: document.getElementById('mgr-history').value,
+      traits: {
+        discipline: document.getElementById('trait-discipline').value,
+        passion: document.getElementById('trait-passion').value,
+        friendly: document.getElementById('trait-friendly').value,
+        youth: document.getElementById('trait-youth').value,
+        flexible: document.getElementById('trait-flexible').value
+      }
+    };
+
+    appState.league = document.getElementById('league-select').value;
+    appState.team = document.getElementById('team-select').value;
+    appState.budget = document.getElementById('mgr-budget').value;
+
+    // Parse Squad Text
+    const rawText = document.getElementById('squad-input').value.trim();
+    const lines = rawText.split('\n');
+    appState.squad = lines.map((line, idx) => {
+      const parts = line.split('\t');
+      return {
+        id: idx,
+        pos: parts[0] || 'CM',
+        name: parts[1] || `Player ${idx+1}`,
+        age: parts[2] || '24',
+        value: parts[3] || '€10.0M',
+        wage: parts[4] || '€50.0K',
+        contract: parts[5] || '3年',
+        role: idx === 0 ? 'Shadow Striker' : 'Holding',
+        status: idx === 0 ? '絶対的' : '主力',
+        morale: '高',
+        unrest: 10
+      };
+    });
+
+    // Update Header
+    document.getElementById('hdr-club').textContent = appState.team;
+    document.getElementById('hdr-manager').textContent = appState.manager.name;
+    document.getElementById('hdr-budget').textContent = appState.budget;
+
+    // UI Switch
+    document.getElementById('setup-wizard').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+    document.getElementById('top-status-bar').style.display = 'flex';
+
+    renderAllViews();
+  }
+
+  function renderAllViews() {
+    // Render Match squad
+    const matchBody = document.getElementById('match-squad-body');
+    matchBody.innerHTML = '';
+    appState.squad.forEach(p => {
+      matchBody.innerHTML += `
+        <tr>
+          <td><span class="pos">${p.pos}</span></td>
+          <td>${p.name}</td>
+          <td><input type="number" step="0.1" value="7.5" style="width:50px;"></td>
+          <td><input type="number" value="2" style="width:45px;"></td>
+          <td><input type="text" value="65%" style="width:55px;"></td>
+        </tr>
+      `;
+    });
+
+    // Render Dropdowns
+    const boardSel = document.getElementById('board-player-select');
+    const lockerSel = document.getElementById('locker-player-select');
+    boardSel.innerHTML = ''; lockerSel.innerHTML = '';
+
+    appState.squad.forEach(p => {
+      boardSel.innerHTML += `<option value="${p.id}">${p.name} (${p.pos}) - ${p.value}</option>`;
+      lockerSel.innerHTML += `<option value="${p.id}">${p.name} (${p.pos})</option>`;
+    });
+
+    // Render Office Squad
+    const officeBody = document.getElementById('office-squad-body');
+    officeBody.innerHTML = '';
+    appState.squad.forEach(p => {
+      officeBody.innerHTML += `
+        <tr>
+          <td><b>${p.name}</b></td>
+          <td>${p.pos}</td>
+          <td>
+            <select>
+              <option ${p.role === 'Shadow Striker' ? 'selected':''}>Shadow Striker</option>
+              <option ${p.role === 'Holding' ? 'selected':''}>Holding</option>
+              <option>Playmaker</option>
+              <option>Ball Winning</option>
+            </select>
+          </td>
+          <td>
+            <select>
+              <option ${p.status === '絶対的' ? 'selected':''}>絶対的</option>
+              <option ${p.status === '主力' ? 'selected':''}>主力</option>
+              <option>ローテーション</option>
+              <option>育成枠</option>
+              <option>構想外</option>
+            </select>
+          </td>
+        </tr>
+      `;
+    });
+
+    // Render Dynamics
+    const dynBody = document.getElementById('locker-dynamics-body');
+    dynBody.innerHTML = '';
+    appState.squad.forEach(p => {
+      dynBody.innerHTML += `
+        <tr>
+          <td>${p.name}</td>
+          <td>${p.status}</td>
+          <td>${p.unrest}%</td>
+          <td><span class="badge badge-success">良好</span></td>
+        </tr>
+      `;
+    });
+  }
+
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(`tab-${tabId}`).classList.add('active');
+    event.target.classList.add('active');
+  }
+
+  function submitMatch() {
+    const aiText = `【監督性格フィードバック】冷静(3) & 柔軟(4) な采配が的中。\n後半の戦術調整が功を奏し、相手のハイプレスを無効化。M. Rogers はキーパス2本と得点に関与し、存在感を示しました。試合後のチーム全体のモチベーションが僅かに上昇しています。`;
+    document.getElementById('match-ai-text').innerText = aiText;
+    document.getElementById('match-ai-feed').style.display = 'block';
+  }
+
+  function processTransfer(type) {
+    const log = document.getElementById('board-log');
+    if(type === 'accept') {
+      log.innerHTML += `<div class="chat-msg manager"><div class="name">フロント</div>オファーを受け入れました。選手との個人面談に移ります。</div>`;
+    } else if(type === 'reject') {
+      log.innerHTML += `<div class="chat-msg manager" style="background:#7f1d1d; color:#fca5a5;"><div class="name">フロント</div>オファーを即時却下しました。選手側に不満が残る可能性があります。</div>`;
+    }
+  }
+
+  function sendLockerMessage() {
+    const input = document.getElementById('locker-input');
+    const msg = input.value.trim();
+    if(!msg) return;
+
+    const chatBox = document.getElementById('locker-chat-box');
+    chatBox.innerHTML += `<div class="chat-msg manager"><div class="name">${appState.manager.name} (監督)</div>${msg}</div>`;
+    input.value = '';
+
+    setTimeout(() => {
+      chatBox.innerHTML += `<div class="chat-msg player"><div class="name">選手</div>「理解しました、監督。チームの勝利のために全力で準備します。」</div>`;
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }, 600);
+  }
+
+  function sendMediaAnswer() {
+    const input = document.getElementById('media-input');
+    const msg = input.value.trim();
+    if(!msg) return;
+
+    const chatBox = document.getElementById('media-chat-box');
+    chatBox.innerHTML += `<div class="chat-msg manager"><div class="name">${appState.manager.name}</div>「${msg}」</div>`;
+    input.value = '';
+
+    // Archive News Add
+    const newsBox = document.getElementById('news-archive');
+    newsBox.innerHTML = `
+      <div style="border-left: 3px solid var(--accent); padding-left: 1rem; margin-bottom: 1rem;">
+        <div style="font-size:0.8rem; color:var(--text-muted);">Just Now | Press Conference</div>
+        <div style="font-weight:bold; margin:0.2rem 0;">監督コメント：「${msg.substring(0, 20)}...」</div>
+        <p style="font-size:0.85rem; color:var(--text-muted);">取材室でのコメントが波紋を呼ぶ。チームの団結にどう影響を与えるか注目される。</p>
+      </div>
+    ` + newsBox.innerHTML;
+  }
+</script>
+</body>
+</html>
