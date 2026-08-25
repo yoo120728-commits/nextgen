@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FC26 Manager Simulation</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #111827; color: #f3f4f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .scroll-hide::-webkit-scrollbar { display: none; }
+    .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+    .fade-enter-from, .fade-leave-to { opacity: 0; }
+    .drop-zone { min-height: 50px; border: 2px dashed #4b5563; border-radius: 0.5rem; }
+    .drop-zone.drag-over { border-color: #3b82f6; background-color: rgba(59, 130, 246, 0.1); }
+  </style>
+</head>
+<body>
+  <div id="app" class="min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-gray-800 border-b border-gray-700 p-4 flex justify-between items-center shadow-md">
+      <h1 class="text-xl font-bold text-blue-400"><i class="fas fa-futbol mr-2"></i>FC26 Manager Simulation</h1>
+      <div v-if="phase === 'main'" class="flex space-x-4">
+        <span class="text-gray-400">監督: {{ manager.lastName }} {{ manager.firstName }}</span>
+        <span class="text-gray-400">クラブ: {{ team.selectedTeam }}</span>
+      </div>
+    </header>
+
+    <main class="flex-1 overflow-auto p-6">
+      <!-- 画面遷移制御 -->
+      <transition name="fade" mode="out-in">
+
+        <!-- 0. API設定 -->
+        <div v-if="phase === 'setup_api'" class="max-w-md mx-auto bg-gray-800 p-8 rounded-lg shadow-lg mt-10">
+          <h2 class="text-2xl font-bold mb-6 text-center">システム初期設定</h2>
+          <p class="text-sm text-gray-400 mb-4">高度なAIシミュレーションを行うために、Gemini APIキーを入力してください。<br>※モデルは gemini-3.6-flash を使用します。</p>
+          <input type="password" v-model="apiKey" placeholder="AIzaSy..." class="w-full bg-gray-700 border border-gray-600 rounded p-3 mb-6 focus:outline-none focus:border-blue-500">
+          <button @click="phase = 'create_manager'" :disabled="!apiKey" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded disabled:opacity-50">次へ: 監督作成</button>
+        </div>
+
+        <!-- 1. 監督作成 -->
+        <div v-else-if="phase === 'create_manager'" class="max-w-3xl mx-auto bg-gray-800 p-8 rounded-lg shadow-lg">
+          <h2 class="text-2xl font-bold mb-6 border-b border-gray-700 pb-2">セーブデータ作成 - 監督の作成</h2>
+          <div class="grid grid-cols-2 gap-6 mb-6">
+            <div><label class="block text-sm mb-1">姓 (Last Name)</label><input type="text" v-model="manager.lastName" class="w-full bg-gray-700 p-2 rounded"></div>
+            <div><label class="block text-sm mb-1">名 (First Name)</label><input type="text" v-model="manager.firstName" class="w-full bg-gray-700 p-2 rounded"></div>
+            <div><label class="block text-sm mb-1">年齢</label><input type="number" v-model="manager.age" class="w-full bg-gray-700 p-2 rounded"></div>
+            <div>
+              <label class="block text-sm mb-1">国籍</label>
+              <select v-model="manager.nationality" class="w-full bg-gray-700 p-2 rounded">
+                <option v-for="nation in nations" :value="nation">{{ nation }}</option>
+              </select>
+            </div>
+            <div class="col-span-2"><label class="block text-sm mb-1">出身地</label><input type="text" v-model="manager.birthplace" class="w-full bg-gray-700 p-2 rounded"></div>
+          </div>
+
+          <h3 class="font-bold mb-4 text-blue-300">性格パラメータ (5段階評価)</h3>
+          <div class="space-y-4 mb-8 bg-gray-900 p-4 rounded-lg">
+            <div v-for="(param, key) in manager.traits" :key="key" class="flex items-center justify-between">
+              <span class="w-24 text-right text-sm text-gray-400">{{ param.labels[0] }}</span>
+              <input type="range" min="1" max="5" v-model="manager.traits[key].value" class="mx-4 flex-1">
+              <span class="w-24 text-left text-sm text-gray-400">{{ param.labels[1] }}</span>
+            </div>
+          </div>
+
+          <h3 class="font-bold mb-4 text-blue-300">経歴設定 (複数選択可)</h3>
+          <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="bg-gray-900 p-4 rounded">
+              <label class="block text-sm mb-2 font-bold">現役時代のチーム</label>
+              <select v-model="tempCareerLeague" class="w-full bg-gray-700 p-2 rounded mb-2 text-sm"><option value="">リーグを選択...</option><option v-for="l in leagues" :value="l.name">{{ l.name }}</option></select>
+              <select v-model="tempCareerTeam" class="w-full bg-gray-700 p-2 rounded mb-2 text-sm" :disabled="!tempCareerLeague"><option value="">チームを選択...</option><option v-for="t in getTeams(tempCareerLeague)" :value="t">{{ t }}</option></select>
+              <button @click="addHistory('player')" class="bg-gray-600 px-3 py-1 rounded text-sm w-full">追加</button>
+              <ul class="mt-2 text-sm list-disc pl-5"><li v-for="h in manager.history.player">{{ h }}</li></ul>
+            </div>
+            <div class="bg-gray-900 p-4 rounded">
+              <label class="block text-sm mb-2 font-bold">AC(アシスタントコーチ)歴</label>
+              <select v-model="tempAcLeague" class="w-full bg-gray-700 p-2 rounded mb-2 text-sm"><option value="">リーグを選択...</option><option v-for="l in leagues" :value="l.name">{{ l.name }}</option></select>
+              <select v-model="tempAcTeam" class="w-full bg-gray-700 p-2 rounded mb-2 text-sm" :disabled="!tempAcLeague"><option value="">チームを選択...</option><option v-for="t in getTeams(tempAcLeague)" :value="t">{{ t }}</option></select>
+              <button @click="addHistory('ac')" class="bg-gray-600 px-3 py-1 rounded text-sm w-full">追加</button>
+              <ul class="mt-2 text-sm list-disc pl-5"><li v-for="h in manager.history.ac">{{ h }}</li></ul>
+            </div>
+          </div>
+          <button @click="phase = 'select_team'" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded">次へ: 就任クラブの選択</button>
+        </div>
+
+        <!-- 2. チーム選択 -->
+        <div v-else-if="phase === 'select_team'" class="max-w-2xl mx-auto bg-gray-800 p-8 rounded-lg shadow-lg">
+          <h2 class="text-2xl font-bold mb-6 border-b border-gray-700 pb-2">就任クラブの選択</h2>
+          <div class="mb-4">
+            <label class="block text-sm mb-1">リーグ選択</label>
+            <select v-model="team.selectedLeague" @change="setupLeagueTable" class="w-full bg-gray-700 p-3 rounded text-lg">
+              <option value="">選択してください</option>
+              <option v-for="l in leagues" :value="l.name">{{ l.name }}</option>
+            </select>
+          </div>
+          <div class="mb-4">
+            <label class="block text-sm mb-1">チーム選択</label>
+            <select v-model="team.selectedTeam" class="w-full bg-gray-700 p-3 rounded text-lg" :disabled="!team.selectedLeague">
+              <option value="">選択してください</option>
+              <option v-for="t in currentLeagueTeams" :value="t">{{ t }}</option>
+            </select>
+          </div>
+          <div class="mb-6">
+            <label class="block text-sm mb-1">チームロゴURL (任意)</label>
+            <input type="text" v-model="team.logoUrl" placeholder="https://..." class="w-full bg-gray-700 p-2 rounded">
+          </div>
+          <div class="mb-8">
+            <label class="block text-sm mb-1">移籍予算 (€)</label>
+            <input type="number" v-model="team.budget" class="w-full bg-gray-700 p-3 rounded text-lg">
+          </div>
+
+          <h3 class="font-bold mb-4 text-blue-300">リーグテーブル設定 (編集可能)</h3>
+          <p class="text-xs text-gray-400 mb-2">※現実の順位や参加チームを下位リーグ等から入れ替え可能です。試合数: {{ currentLeagueMatches }}</p>
+          <div class="max-h-64 overflow-y-auto mb-6 bg-gray-900 p-2 rounded">
+            <div v-for="(t, index) in team.leagueTable" :key="index" class="flex items-center gap-2 mb-2">
+              <span class="w-6 text-center text-gray-500">{{ index + 1 }}</span>
+              <input type="text" v-model="team.leagueTable[index].name" class="flex-1 bg-gray-700 p-1 rounded text-sm">
+            </div>
+          </div>
+          <button @click="phase = 'setup_squad'" :disabled="!team.selectedTeam" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded disabled:opacity-50">次へ: スカッドの登録</button>
+        </div>
+
+        <!-- 3. スカッド登録 -->
+        <div v-else-if="phase === 'setup_squad'" class="max-w-4xl mx-auto bg-gray-800 p-8 rounded-lg shadow-lg">
+          <h2 class="text-2xl font-bold mb-6 border-b border-gray-700 pb-2">チームスカッドの登録</h2>
+          
+          <div class="bg-gray-900 p-4 rounded mb-6 border border-gray-700">
+            <h3 class="font-bold text-green-400 mb-2"><i class="fas fa-magic mr-2"></i>AI一括読み取り (API連携)</h3>
+            <p class="text-xs text-gray-400 mb-2">ゲーム画面のOCRテキストやメモを貼り付けてください。Gemini APIが自動で整理して登録します。</p>
+            <textarea v-model="rawSquadText" rows="4" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-sm mb-2 placeholder-gray-500" placeholder="例: ST, ハーランド, 24歳, 15000万, 週給20万, 3年..."></textarea>
+            <button @click="parseSquadWithAI" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded font-bold text-sm" :disabled="isParsing">
+              <i class="fas fa-spinner fa-spin mr-2" v-if="isParsing"></i>AIで解析して追加
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left mb-4">
+              <thead class="bg-gray-700">
+                <tr>
+                  <th class="p-2">Pos</th><th class="p-2">名前</th><th class="p-2">年齢</th><th class="p-2">市場価値(万€)</th><th class="p-2">週給(万€)</th><th class="p-2">契約(年)</th><th class="p-2">役割(優先度)</th><th class="p-2">写真URL</th><th class="p-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(p, i) in squad" :key="i" class="border-b border-gray-700">
+                  <td class="p-1"><input v-model="p.position" class="w-12 bg-gray-800 p-1 rounded"></td>
+                  <td class="p-1"><input v-model="p.name" class="w-32 bg-gray-800 p-1 rounded"></td>
+                  <td class="p-1"><input v-model="p.age" type="number" class="w-12 bg-gray-800 p-1 rounded"></td>
+                  <td class="p-1"><input v-model="p.value" type="number" class="w-20 bg-gray-800 p-1 rounded"></td>
+                  <td class="p-1"><input v-model="p.wage" type="number" class="w-16 bg-gray-800 p-1 rounded"></td>
+                  <td class="p-1"><input v-model="p.years" type="number" class="w-12 bg-gray-800 p-1 rounded"></td>
+                  <td class="p-1">
+                    <select v-model="p.hierarchy" class="bg-gray-800 p-1 rounded w-28 text-xs">
+                      <option>絶対的</option><option>主力</option><option>ローテーション</option><option>育成枠</option><option>カップ戦メンバー</option><option>構想外</option>
+                    </select>
+                  </td>
+                  <td class="p-1"><input v-model="p.photo" class="w-24 bg-gray-800 p-1 rounded text-xs" placeholder="URL"></td>
+                  <td class="p-1"><button @click="squad.splice(i, 1)" class="text-red-400 hover:text-red-300"><i class="fas fa-trash"></i></button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <button @click="addEmptyPlayer" class="bg-gray-700 px-4 py-2 rounded text-sm mb-6">+ 手動で選手を追加</button>
+          
+          <button @click="initMain" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded">ゲームスタート</button>
+        </div>
+
+        <!-- 4. メインダッシュボード -->
+        <div v-else-if="phase === 'main'" class="h-full flex flex-col">
+          <!-- タブナビゲーション -->
+          <div class="flex border-b border-gray-700 mb-4 bg-gray-800 rounded-t-lg overflow-x-auto scroll-hide">
+            <button v-for="tab in tabs" :key="tab.id" @click="activeTab = tab.id" :class="['px-6 py-3 font-bold whitespace-nowrap transition-colors', activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-700']">
+              <i :class="tab.icon" class="mr-2"></i>{{ tab.name }}
+            </button>
+          </div>
+
+          <!-- タブコンテンツエリア -->
+          <div class="flex-1 bg-gray-800 rounded-b-lg p-6 overflow-y-auto shadow-lg border border-gray-700 relative">
+            
+            <div v-if="isLoading" class="absolute inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 rounded-b-lg">
+              <div class="text-center">
+                <i class="fas fa-circle-notch fa-spin text-4xl text-blue-500 mb-2"></i>
+                <p class="text-blue-300">シミュレーション中...</p>
+              </div>
+            </div>
+
+            <!-- 1. マッチ -->
+            <div v-show="activeTab === 'match'">
+              <h2 class="text-2xl font-bold mb-4">試合結果の報告</h2>
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- 入力エリア -->
+                <div class="bg-gray-900 p-4 rounded-lg">
+                  <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div><label class="block text-sm text-gray-400">日付</label><input type="date" v-model="match.date" class="w-full bg-gray-800 p-2 rounded"></div>
+                    <div>
+                      <label class="block text-sm text-gray-400">H/A</label>
+                      <select v-model="match.venue" class="w-full bg-gray-800 p-2 rounded"><option>Home</option><option>Away</option></select>
+                    </div>
+                    <div class="col-span-2">
+                      <label class="block text-sm text-gray-400">対戦相手</label>
+                      <select v-model="match.opponent" class="w-full bg-gray-800 p-2 rounded">
+                        <option v-for="t in currentLeagueTeams" :value="t">{{ t }}</option>
+                      </select>
+                    </div>
+                    <div><label class="block text-sm text-gray-400">自チーム得点</label><input type="number" v-model="match.myScore" class="w-full bg-gray-800 p-2 rounded text-center text-xl font-bold"></div>
+                    <div><label class="block text-sm text-gray-400">相手チーム得点</label><input type="number" v-model="match.oppScore" class="w-full bg-gray-800 p-2 rounded text-center text-xl font-bold"></div>
+                  </div>
+
+                  <div class="mb-4 border-t border-gray-700 pt-4">
+                    <label class="block text-sm text-blue-400 font-bold mb-2 cursor-pointer" @click="match.showDetails = !match.showDetails">
+                      <i class="fas" :class="match.showDetails ? 'fa-chevron-down' : 'fa-chevron-right'"></i> 詳細オプション (スタッツ・選手評価)
+                    </label>
+                    
+                    <div v-show="match.showDetails" class="bg-gray-800 p-3 rounded text-sm space-y-4">
+                      <p class="text-xs text-gray-400">起用した選手を選択し、各種スタッツを入力してください。</p>
+                      
+                      <div class="flex gap-4">
+                        <!-- スタメン (Drop Zone) -->
+                        <div class="flex-1 bg-gray-700 p-2 rounded">
+                          <h4 class="font-bold border-b border-gray-600 mb-2">スタメン (D&Dで交代)</h4>
+                          <div class="drop-zone p-2 space-y-1" @dragover.prevent @drop="onDropPlayer($event, 'starters')">
+                            <div v-for="p in match.starters" :key="p.name" class="bg-gray-600 p-1 rounded cursor-move flex justify-between" draggable="true" @dragstart="onDragStart($event, p, 'starters')">
+                              <span>{{ p.position }} {{ p.name }}</span>
+                              <button @click="openStatsModal(p)" class="text-blue-300 hover:text-blue-100"><i class="fas fa-chart-bar"></i></button>
+                            </div>
+                          </div>
+                        </div>
+                        <!-- ベンチ (Drop Zone) -->
+                        <div class="flex-1 bg-gray-700 p-2 rounded">
+                          <h4 class="font-bold border-b border-gray-600 mb-2">ベンチ</h4>
+                          <div class="drop-zone p-2 space-y-1" @dragover.prevent @drop="onDropPlayer($event, 'bench')">
+                            <div v-for="p in match.bench" :key="p.name" class="bg-gray-600 p-1 rounded cursor-move flex justify-between" draggable="true" @dragstart="onDragStart($event, p, 'bench')">
+                              <span>{{ p.position }} {{ p.name }}</span>
+                              <button @click="openStatsModal(p)" class="text-blue-300 hover:text-blue-100"><i class="fas fa-chart-bar"></i></button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div class="bg-gray-700 p-2 rounded">
+                        <h4 class="font-bold border-b border-gray-600 mb-2">交代記録</h4>
+                        <div class="flex gap-2 mb-2">
+                          <select v-model="tempSub.out" class="bg-gray-800 p-1 rounded text-xs flex-1"><option value="">OUT(スタメン)</option><option v-for="p in match.starters" :value="p.name">{{ p.name }}</option></select>
+                          <select v-model="tempSub.in" class="bg-gray-800 p-1 rounded text-xs flex-1"><option value="">IN(ベンチ)</option><option v-for="p in match.bench" :value="p.name">{{ p.name }}</option></select>
+                          <input type="number" v-model="tempSub.time" placeholder="分" class="bg-gray-800 p-1 rounded text-xs w-12">
+                          <button @click="addSubstitution" class="bg-blue-600 px-2 rounded text-xs">追加</button>
+                        </div>
+                        <ul class="text-xs text-gray-300"><li v-for="(s, i) in match.subs" :key="i">{{ s.time }}分: {{ s.out }} OUT → {{ s.in }} IN</li></ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button @click="simulateMatch" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded text-lg">試合結果を報告してシミュレーション</button>
+                </div>
+
+                <!-- 出力エリア -->
+                <div class="bg-gray-900 p-4 rounded-lg flex flex-col h-full">
+                  <h3 class="font-bold text-blue-400 mb-2"><i class="fas fa-newspaper mr-2"></i>クラブ内部の反応 (AIシミュレーション)</h3>
+                  <div class="flex-1 bg-gray-800 p-4 rounded overflow-y-auto whitespace-pre-wrap text-sm" v-html="match.simulationResult || '<p class=\"text-gray-500\">結果報告後、ここにチーム内部の様子、選手の不満、フロントの評価などが表示されます。</p>'"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. 会議室 (移籍オフィス) -->
+            <div v-show="activeTab === 'transfer'">
+              <h2 class="text-2xl font-bold mb-4">会議室 (移籍オフィス)</h2>
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-gray-900 p-4 rounded-lg">
+                  <h3 class="font-bold border-b border-gray-700 pb-2 mb-4">移籍オファー受信</h3>
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-sm text-gray-400">対象選手</label>
+                      <select v-model="transfer.player" class="w-full bg-gray-800 p-2 rounded">
+                        <option v-for="p in squad" :value="p">{{ p.name }} ({{ p.value }}万€)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-sm text-gray-400">オファー元クラブ (テキスト入力/プルダウン)</label>
+                      <input type="text" v-model="transfer.club" list="all-clubs" class="w-full bg-gray-800 p-2 rounded">
+                      <datalist id="all-clubs"><option v-for="c in currentLeagueTeams" :value="c"></option></datalist>
+                    </div>
+                    <div>
+                      <label class="block text-sm text-gray-400">提示金額 (万€)</label>
+                      <input type="number" v-model="transfer.fee" class="w-full bg-gray-800 p-2 rounded">
+                    </div>
+                    <button @click="simulateTransferOffer" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded font-bold">フロントの反応をシミュレーション</button>
+                  </div>
+
+                  <div v-if="transfer.frontDecision" class="mt-4 p-3 rounded" :class="transfer.isAccepted ? 'bg-green-900' : 'bg-red-900'">
+                    <h4 class="font-bold mb-1">フロント判定</h4>
+                    <p class="text-sm whitespace-pre-wrap">{{ transfer.frontDecision }}</p>
+                    <div v-if="transfer.isAccepted" class="mt-3 border-t border-gray-600 pt-3">
+                      <button @click="startPlayerMeeting" class="w-full bg-green-600 py-2 rounded text-sm font-bold">選手との面談へ進む</button>
+                    </div>
+                    <div v-else class="mt-3 flex gap-2">
+                      <button @click="rejectOffer" class="flex-1 bg-gray-600 py-1 rounded text-sm">却下する</button>
+                      <button @click="counterOffer" class="flex-1 bg-yellow-600 py-1 rounded text-sm">カウンター提示</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-gray-900 p-4 rounded-lg flex flex-col h-96">
+                  <h3 class="font-bold text-blue-400 mb-2 border-b border-gray-700 pb-2"><i class="fas fa-comments mr-2"></i>選手面談チャット</h3>
+                  <div class="flex-1 overflow-y-auto mb-2 space-y-2 p-2 bg-gray-800 rounded">
+                    <div v-if="transfer.meetingChat.length === 0" class="text-gray-500 text-sm text-center mt-10">フロントが容認した後、選手との面談がここで開始されます。</div>
+                    <div v-for="(msg, i) in transfer.meetingChat" :key="i" :class="msg.role === 'user' ? 'text-right' : 'text-left'">
+                      <span class="inline-block p-2 rounded-lg text-sm max-w-[80%]" :class="msg.role === 'user' ? 'bg-blue-600' : 'bg-gray-700'">{{ msg.text }}</span>
+                    </div>
+                  </div>
+                  <div class="flex gap-2" v-if="transfer.isMeeting">
+                    <input type="text" v-model="transfer.meetingInput" @keyup.enter="sendMeetingMessage" placeholder="監督として発言..." class="flex-1 bg-gray-700 p-2 rounded text-sm">
+                    <button @click="sendMeetingMessage" class="bg-blue-600 px-4 rounded"><i class="fas fa-paper-plane"></i></button>
+                    <button @click="finalizeTransfer" class="bg-red-600 px-2 rounded text-xs font-bold">移籍成立</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. ロッカールーム -->
+            <div v-show="activeTab === 'locker'">
+              <h2 class="text-2xl font-bold mb-4">ロッカールーム</h2>
+              <div class="flex h-[32rem] gap-4">
+                <div class="w-1/3 bg-gray-900 rounded-lg p-2 overflow-y-auto">
+                  <h3 class="font-bold text-sm text-gray-400 mb-2 px-2">選手リスト</h3>
+                  <div class="space-y-1">
+                    <button v-for="p in squad" :key="p.name" @click="selectLockerPlayer(p)" class="w-full text-left p-2 rounded text-sm hover:bg-gray-700 transition" :class="locker.selectedPlayer?.name === p.name ? 'bg-blue-900 border-l-4 border-blue-500' : 'bg-gray-800'">
+                      <div class="flex justify-between items-center">
+                        <span>{{ p.position }} {{ p.name }}</span>
+                        <span class="text-xs text-gray-400">{{ p.hierarchy }}</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+                <div class="flex-1 bg-gray-900 rounded-lg p-4 flex flex-col relative">
+                  <div v-if="!locker.selectedPlayer" class="absolute inset-0 flex items-center justify-center text-gray-500">左から話しかける選手を選択してください</div>
+                  <template v-else>
+                    <div class="border-b border-gray-700 pb-2 mb-2 flex justify-between items-end">
+                      <h3 class="font-bold text-lg text-blue-300">{{ locker.selectedPlayer.name }}</h3>
+                      <span class="text-xs text-gray-400">契約: {{ locker.selectedPlayer.years }}年 / 役割: {{ locker.selectedPlayer.hierarchy }}</span>
+                    </div>
+                    <div class="flex-1 overflow-y-auto mb-2 space-y-2 p-2 bg-gray-800 rounded">
+                       <div v-for="(msg, i) in getLockerChat(locker.selectedPlayer.name)" :key="i" :class="msg.role === 'user' ? 'text-right' : 'text-left'">
+                        <span class="inline-block p-2 rounded-lg text-sm max-w-[80%]" :class="msg.role === 'user' ? 'bg-blue-600' : 'bg-gray-700 whitespace-pre-wrap'">{{ msg.text }}</span>
+                      </div>
+                    </div>
+                    <div class="flex gap-2">
+                      <input type="text" v-model="locker.input" @keyup.enter="sendLockerMessage" placeholder="話しかける..." class="flex-1 bg-gray-700 p-2 rounded text-sm">
+                      <button @click="sendLockerMessage" class="bg-blue-600 px-4 rounded"><i class="fas fa-comment"></i></button>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4. 取材室 -->
+            <div v-show="activeTab === 'press'">
+              <h2 class="text-2xl font-bold mb-4">取材室</h2>
+              <div class="bg-gray-900 p-4 rounded-lg flex flex-col h-[32rem]">
+                <div class="flex justify-between items-center border-b border-gray-700 pb-2 mb-2">
+                  <h3 class="font-bold text-blue-300"><i class="fas fa-microphone mr-2"></i>プレスインタビュー</h3>
+                  <button @click="triggerPressEvent" class="bg-green-600 hover:bg-green-700 text-xs px-3 py-1 rounded">記者を呼ぶ</button>
+                </div>
+                <div class="flex-1 overflow-y-auto mb-2 space-y-2 p-4 bg-gray-800 rounded">
+                  <div v-if="press.chat.length === 0" class="text-gray-500 text-sm text-center mt-10">「記者を呼ぶ」ボタンを押してインタビューを開始するか、記者からの質問をお待ちください。</div>
+                  <div v-for="(msg, i) in press.chat" :key="i" :class="msg.role === 'user' ? 'text-right' : 'text-left'">
+                     <span class="inline-block p-2 rounded-lg text-sm max-w-[85%]" :class="msg.role === 'user' ? 'bg-blue-600' : 'bg-gray-700 whitespace-pre-wrap'">
+                       <i v-if="msg.role !== 'user'" class="fas fa-user-edit mr-2 text-gray-400"></i>{{ msg.text }}
+                     </span>
+                  </div>
+                </div>
+                <div class="flex gap-2">
+                  <input type="text" v-model="press.input" @keyup.enter="sendPressMessage" placeholder="記者への回答..." class="flex-1 bg-gray-700 p-2 rounded text-sm" :disabled="!press.isActive">
+                  <button @click="sendPressMessage" class="bg-blue-600 px-4 rounded" :disabled="!press.isActive"><i class="fas fa-reply"></i></button>
+                  <button @click="endPressEvent" class="bg-red-600 px-3 py-1 rounded text-xs font-bold" v-if="press.isActive">終了・記事化</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 5. 監督室 -->
+            <div v-show="activeTab === 'manager_room'">
+              <h2 class="text-2xl font-bold mb-4">監督室 (スカッド管理・フォーメーション)</h2>
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- リストと編集 -->
+                <div class="lg:col-span-2 bg-gray-900 p-4 rounded-lg overflow-x-auto">
+                  <div class="flex justify-between mb-2">
+                    <h3 class="font-bold text-gray-300">チームメンバー管理</h3>
+                    <button @click="addEmptyPlayer" class="bg-gray-700 hover:bg-gray-600 text-xs px-3 py-1 rounded">+ 選手追加</button>
+                  </div>
+                  <table class="w-full text-xs text-left">
+                    <thead class="bg-gray-700">
+                      <tr><th>Pos</th><th>名前</th><th>年齢</th><th>役割</th><th>FCIQロール(メモ)</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(p, i) in squad" :key="i" class="border-b border-gray-800">
+                        <td class="p-1"><input v-model="p.position" class="w-8 bg-transparent text-center"></td>
+                        <td class="p-1"><input v-model="p.name" class="w-full bg-transparent"></td>
+                        <td class="p-1"><input v-model="p.age" type="number" class="w-10 bg-transparent text-center"></td>
+                        <td class="p-1">
+                          <select v-model="p.hierarchy" class="bg-gray-800 p-1 rounded w-24">
+                            <option>絶対的</option><option>主力</option><option>ローテーション</option><option>育成枠</option><option>カップ戦メンバー</option><option>構想外</option>
+                          </select>
+                        </td>
+                        <td class="p-1"><input v-model="p.fciq" placeholder="例: インサイドFW+" class="w-full bg-gray-800 p-1 rounded"></td>
+                        <td class="p-1"><button @click="squad.splice(i, 1)" class="text-red-500"><i class="fas fa-times"></i></button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- 戦術セットアップ (簡易) -->
+                <div class="bg-gray-900 p-4 rounded-lg">
+                  <h3 class="font-bold text-gray-300 mb-4">マッチデースカッド準備</h3>
+                  <p class="text-xs text-gray-400 mb-4">ここでスタメンとベンチを選出しておくと、マッチタブで自動的に反映されます。</p>
+                  
+                  <div class="mb-4">
+                    <label class="text-sm text-blue-300 block mb-1 border-b border-gray-700">スタメン (11人)</label>
+                    <div class="min-h-[100px] border border-dashed border-gray-600 rounded p-1 drop-zone" @dragover.prevent @drop="onDropPrep($event, 'starters')">
+                      <div v-for="p in prepStarters" :key="p.name" draggable="true" @dragstart="onDragStartPrep($event, p, 'starters')" class="inline-block bg-blue-900 text-xs px-2 py-1 m-1 rounded cursor-move">{{p.position}} {{p.name}}</div>
+                    </div>
+                  </div>
+                  <div class="mb-4">
+                    <label class="text-sm text-green-300 block mb-1 border-b border-gray-700">ベンチ</label>
+                    <div class="min-h-[60px] border border-dashed border-gray-600 rounded p-1 drop-zone" @dragover.prevent @drop="onDropPrep($event, 'bench')">
+                      <div v-for="p in prepBench" :key="p.name" draggable="true" @dragstart="onDragStartPrep($event, p, 'bench')" class="inline-block bg-green-900 text-xs px-2 py-1 m-1 rounded cursor-move">{{p.position}} {{p.name}}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="text-sm text-gray-400 block mb-1 border-b border-gray-700">その他控え</label>
+                    <div class="min-h-[100px] border border-dashed border-gray-600 rounded p-1 drop-zone" @dragover.prevent @drop="onDropPrep($event, 'reserves')">
+                      <div v-for="p in prepReserves" :key="p.name" draggable="true" @dragstart="onDragStartPrep($event, p, 'reserves')" class="inline-block bg-gray-700 text-xs px-2 py-1 m-1 rounded cursor-move">{{p.position}} {{p.name}}</div>
+                    </div>
+                  </div>
+                  <button @click="savePrepSquad" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-xs py-2 rounded">このメンバーをマッチタブに適用</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 6. 編纂室 -->
+            <div v-show="activeTab === 'archive'">
+              <h2 class="text-2xl font-bold mb-4">編纂室 (ニュース・アーカイブ)</h2>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- ニュース -->
+                <div class="bg-gray-900 p-4 rounded-lg h-[32rem] flex flex-col">
+                  <h3 class="font-bold text-blue-300 mb-2 border-b border-gray-700 pb-2"><i class="fas fa-globe mr-2"></i>最新ニュース / メディア報道</h3>
+                  <div class="flex-1 overflow-y-auto space-y-4 pr-2">
+                    <div v-if="archive.news.length === 0" class="text-gray-500 text-sm">ニュースはまだありません。試合や取材をこなすと生成されます。</div>
+                    <div v-for="n in archive.news.slice().reverse()" class="bg-gray-800 p-3 rounded border-l-4 border-blue-500">
+                      <div class="text-xs text-gray-400 mb-1">{{ n.date }} - {{ n.source }}</div>
+                      <h4 class="font-bold text-sm text-gray-200 mb-1">{{ n.title }}</h4>
+                      <p class="text-xs text-gray-300 whitespace-pre-wrap">{{ n.body }}</p>
+                    </div>
+                  </div>
+                </div>
+                <!-- 過去の試合結果 -->
+                <div class="bg-gray-900 p-4 rounded-lg h-[32rem] flex flex-col">
+                  <h3 class="font-bold text-green-300 mb-2 border-b border-gray-700 pb-2"><i class="fas fa-history mr-2"></i>試合アーカイブ</h3>
+                  <div class="flex-1 overflow-y-auto space-y-2 pr-2">
+                    <div v-if="archive.matches.length === 0" class="text-gray-500 text-sm">試合履歴はありません。</div>
+                    <div v-for="m in archive.matches.slice().reverse()" class="bg-gray-800 p-2 rounded text-sm flex justify-between items-center">
+                      <span class="text-gray-400 w-24">{{ m.date }}</span>
+                      <span class="font-bold flex-1 text-center" :class="m.myScore > m.oppScore ? 'text-green-400' : m.myScore < m.oppScore ? 'text-red-400' : 'text-yellow-400'">
+                        {{ team.selectedTeam }} {{ m.myScore }} - {{ m.oppScore }} {{ m.opponent }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </transition>
+    </main>
+
+    <!-- モーダル: スタッツ入力 -->
+    <div v-if="statsModal.show" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+      <div class="bg-gray-800 p-6 rounded-lg w-96 shadow-2xl border border-gray-600">
+        <h3 class="text-lg font-bold mb-4 text-blue-300">{{ statsModal.player.name }} のスタッツ入力</h3>
+        <div class="space-y-3 text-sm">
+          <div class="flex justify-between items-center"><label>ゴール</label><input type="number" v-model="statsModal.data.goals" class="bg-gray-700 p-1 w-16 text-center rounded"></div>
+          <div class="flex justify-between items-center"><label>アシスト</label><input type="number" v-model="statsModal.data.assists" class="bg-gray-700 p-1 w-16 text-center rounded"></div>
+          <div class="flex justify-between items-center"><label>ドリブル成功率</label><input type="text" v-model="statsModal.data.dribble" placeholder="例: 3/5" class="bg-gray-700 p-1 w-20 text-center rounded"></div>
+          <div class="flex justify-between items-center"><label>パス成功率</label><input type="text" v-model="statsModal.data.pass" placeholder="例: 40/45" class="bg-gray-700 p-1 w-20 text-center rounded"></div>
+          <div class="flex justify-between items-center"><label>デュエル勝率</label><input type="text" v-model="statsModal.data.duel" placeholder="例: 4/6" class="bg-gray-700 p-1 w-20 text-center rounded"></div>
+          <div class="flex justify-between items-center"><label>キーパス</label><input type="number" v-model="statsModal.data.keyPass" class="bg-gray-700 p-1 w-16 text-center rounded"></div>
+          <div class="flex justify-between items-center"><label>マッチレート</label><input type="number" step="0.1" v-model="statsModal.data.rating" class="bg-gray-700 p-1 w-16 text-center rounded"></div>
+          <div v-if="statsModal.player.position === 'GK'" class="flex justify-between items-center"><label>セーブ</label><input type="text" v-model="statsModal.data.save" placeholder="例: 3/4" class="bg-gray-700 p-1 w-20 text-center rounded"></div>
+        </div>
+        <div class="mt-6 flex justify-end">
+          <button @click="saveStatsModal" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded font-bold">保存して閉じる</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const { createApp, ref, reactive, computed, onMounted } = Vue;
+
+    // 定数・データモック
+    const NATIONS = ["日本", "イングランド", "スペイン", "ドイツ", "イタリア", "フランス", "オランダ", "ポルトガル", "ブラジル", "アルゼンチン"];
+    const LEAGUE_DATA = [
+      { name: "プレミアリーグ", matches: 38, teams: ["アーセナル", "アストン・ヴィラ", "ボーンマス", "ブレントフォード", "ブライトン", "チェルシー", "クリスタル・パレス", "エヴァートン", "フラム", "レスター", "リヴァプール", "マン・シティ", "マン・ユナイテッド", "ニューカッスル", "N・フォレスト", "サウサンプトン", "トッテナム", "ウェストハム", "ウルヴス", "イプスウィッチ"] },
+      { name: "EFLチャンピオンシップ", matches: 46, teams: ["リーズ", "バーンリー", "シェフィールド・U", "サンダーランド", "ミドルズブラ", "ウエスト・ブロム", "ノリッジ", "コヴェントリー", "プレストン"] },
+      { name: "ラ・リーガ", matches: 38, teams: ["レアル・マドリード", "バルセロナ", "アトレティコ", "ジローナ", "ビルバオ", "ソシエダ", "ベティス", "ビジャレアル", "バレンシア", "アラベス", "オサスナ", "セビージャ", "セルタ", "ラス・パルマス", "マジョルカ", "ヘタフェ", "ラージョ", "レガネス", "バジャドリード", "エスパニョール"] },
+      { name: "セリエA", matches: 38, teams: ["インテル", "ミラン", "ユヴェントス", "アタランタ", "ボローニャ", "ローマ", "ラツィオ", "フィオレンティーナ", "トリノ", "ナポリ", "ジェノア", "モンツァ", "ヴェローナ", "レッチェ", "ウディネーゼ", "カリアリ", "エンポリ", "パルマ", "コモ", "ヴェネツィア"] },
+      { name: "ブンデスリーガ", matches: 34, teams: ["レヴァークーゼン", "シュトゥットガルト", "バイエルン", "ライプツィヒ", "ドルトムント", "フランクフルト", "ホッフェンハイム", "ハイデンハイム", "ブレーメン", "フライブルク", "アウクスブルク", "ヴォルフスブルク", "マインツ", "ボルシアMG", "ウニオン・ベルリン", "ボーフム", "ザンクトパウリ", "キール"] },
+      { name: "リーグ・アン", matches: 34, teams: ["PSG", "モナコ", "ブレスト", "リール", "ニース", "リヨン", "ランス", "マルセイユ", "レンヌ", "トゥールーズ", "モンペリエ", "ストラスブール", "ナント", "ル・アーヴル", "オセール", "アンジェ", "サンテティエンヌ"] },
+      { name: "その他の欧州クラブ", matches: 34, teams: ["アヤックス", "PSV", "フェイエノールト", "ベンフィカ", "ポルト", "スポルティング", "セルティック", "レンジャーズ", "ガラタサライ", "フェネルバフチェ", "ザルツブルク"] }
+    ];
+
+    // ユーザー指定のシステムプロンプト（APIに渡す絶対的ルール）
+    const SYSTEM_PROMPT = `
+【FC26キャリアモード クラブ運営・サッカードラマ シミュレーションシステム】
+1. シミュレーションの基本方針
+このシミュレーションでは、FC26キャリアモードで発生したゲーム内の出来事を、そのまま記録するのではなく、「その出来事によってクラブ内部で何が起きたのか」をシミュレーションする。
+ゲーム内で表示される試合結果、移籍などを起点として、その裏側にある選手心理、人間関係、ロッカールーム、フロントの政治、メディア、サポーターを描写する。
+
+2. 最重要原則
+「ゲーム内の事実を基礎にし、その周囲の人間と組織をシミュレーションする」
+ゲーム内で発生していない重大な出来事を「確定した事実」として勝手に扱ってはいけない。
+
+3. 情報の種類を明確に区別する
+【確定情報】ユーザーが報告した事実。絶対に変更しない。
+【クラブ内部】選手心理、フロントの議論、ロッカールームなど。シミュレーション上の内部情報。
+【観測・噂】メディア報道、サポーターの噂など。
+
+4. 数字を人間ドラマへ変換する
+数字→評価→心理→人間関係→クラブ内部→メディア→将来的な影響 という流れで考える。
+
+6. 長期継続システム
+一度不満を持った選手は永遠に不満とはしない。起用されれば信頼回復するなど状態を変化させる。過去のやり取りの文脈を踏まえる。
+
+7〜29のルール（省略せずに解釈）：
+フロント(会長、オーナー、SD)はそれぞれ利害を持つ。派閥は状況によって発生。
+出場機会不足は段階的に進行(不満の芽→要望→期限意識→低下→移籍志向)。見えない問題も追跡。
+監督からの約束を追跡。移籍オファー時は選手の意思を確認し、フロント議論→後釜戦略へと連鎖。新加入により既存の序列低下など二次影響も描く。
+メディアは異なる論調を混在。会話シーン(SDx監督など)を入れる。重要度に応じて描写量を変える。
+
+【出力要件】
+結果の報告に対して、以下の見出しを使って構造化して出力すること。
+■ クラブ内部 (フロントの評価など)
+■ ロッカールーム (不満、派閥、選手の心理など)
+■ 監督の現在地 (立場、プレッシャー)
+■ メディア＆サポーター (異なる視点)
+■ 見えない変化 (今後の予測、⚠出場機会警戒など)
+※ユーザーが提供する監督の性格パラメータも考慮して反応を描写すること。
+`;
+
+    createApp({
+      setup() {
+        const phase = ref('setup_api');
+        const apiKey = ref('');
+        const isLoading = ref(false);
+
+        // --- 監督データ ---
+        const manager = reactive({
+          lastName: '', firstName: '', age: 40, nationality: '日本', birthplace: '',
+          traits: {
+            discipline: { value: 3, labels: ['放任', '規律'] },
+            passion: { value: 3, labels: ['冷静', '情熱'] },
+            friendly: { value: 3, labels: ['厳格', 'フレンドリー'] },
+            development: { value: 3, labels: ['補強', '育成'] },
+            stubborn: { value: 3, labels: ['柔軟', '固執'] }
+          },
+          history: { player: [], ac: [] }
+        });
+        const tempCareerLeague = ref(''); const tempCareerTeam = ref('');
+        const tempAcLeague = ref(''); const tempAcTeam = ref('');
+
+        // --- チーム・リーグデータ ---
+        const nations = NATIONS;
+        const leagues = LEAGUE_DATA;
+        const team = reactive({
+          selectedLeague: '', selectedTeam: '', logoUrl: '', budget: 50000000, leagueTable: []
+        });
+
+        // --- スカッドデータ ---
+        const squad = reactive([]);
+        const rawSquadText = ref('');
+        const isParsing = ref(false);
+
+        // --- UI状態 ---
+        const activeTab = ref('match');
+        const tabs = [
+          { id: 'match', name: 'マッチ', icon: 'fas fa-futbol' },
+          { id: 'transfer', name: '会議室', icon: 'fas fa-handshake' },
+          { id: 'locker', name: 'ロッカー', icon: 'fas fa-door-closed' },
+          { id: 'press', name: '取材室', icon: 'fas fa-microphone' },
+          { id: 'manager_room', name: '監督室', icon: 'fas fa-clipboard-list' },
+          { id: 'archive', name: '編纂室', icon: 'fas fa-book-open' }
+        ];
+
+        // --- タブ別データ: マッチ ---
+        const match = reactive({
+          date: new Date().toISOString().slice(0, 10), opponent: '', venue: 'Home', myScore: 0, oppScore: 0,
+          showDetails: false, starters: [], bench: [], subs: [], simulationResult: ''
+        });
+        const tempSub = reactive({ out: '', in: '', time: '' });
+        const statsModal = reactive({ show: false, player: null, data: {} });
+        
+        // --- タブ別データ: 会議室 ---
+        const transfer = reactive({
+          player: null, club: '', fee: 0, frontDecision: '', isAccepted: false, isMeeting: false, meetingChat: [], meetingInput: ''
+        });
+
+        // --- タブ別データ: ロッカールーム ---
+        const locker = reactive({
+          selectedPlayer: null, input: '', chats: {} // { 'player_name': [{role, text}] }
+        });
+
+        // --- タブ別データ: 取材室 ---
+        const press = reactive({
+          isActive: false, chat: [], input: ''
+        });
+
+        // --- タブ別データ: 監督室 (準備) ---
+        const prepStarters = reactive([]);
+        const prepBench = reactive([]);
+        const prepReserves = reactive([]);
+
+        // --- タブ別データ: 編纂室 ---
+        const archive = reactive({
+          matches: [], news: [], historyContext: [] // LLM用の会話履歴コンテキスト
+        });
+
+        // Computed
+        const currentLeagueTeams = computed(() => {
+          const l = leagues.find(l => l.name === team.selectedLeague);
+          return l ? l.teams : [];
+        });
+        const currentLeagueMatches = computed(() => {
+          const l = leagues.find(l => l.name === team.selectedLeague);
+          return l ? l.matches : 0;
+        });
+
+        // Methods: 監督作成
+        const getTeams = (leagueName) => {
+          const l = leagues.find(x => x.name === leagueName);
+          return l ? l.teams : [];
+        };
+        const addHistory = (type) => {
+          if(type === 'player' && tempCareerTeam.value) { manager.history.player.push(tempCareerTeam.value); tempCareerTeam.value=''; }
+          if(type === 'ac' && tempAcTeam.value) { manager.history.ac.push(tempAcTeam.value); tempAcTeam.value=''; }
+        };
+
+        // Methods: チーム選択
+        const setupLeagueTable = () => {
+          if (!team.selectedLeague) return;
+          const l = leagues.find(x => x.name === team.selectedLeague);
+          team.leagueTable = l.teams.map(t => ({ name: t }));
+        };
+
+        // Methods: スカッド登録
+        const addEmptyPlayer = () => {
+          squad.push({ position: 'CB', name: 'New Player', age: 20, value: 100, wage: 1, years: 3, hierarchy: 'ローテーション', fciq: '', photo: '', stats: {} });
+        };
+        
+        // Gemini API呼び出しラッパー関数
+        const callGemini = async (prompt, systemContext = SYSTEM_PROMPT) => {
+          // ※要件通りモデル名は gemini-3.6-flash をURLに指定（現在存在しない場合はエラーになるが、プロンプトの指定を優先）
+          // 実際稼働させる場合は v1beta/models/gemini-2.5-flash 等に置換可能。
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey.value}`;
+          try {
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: systemContext }] }
+              })
+            });
+            if(!response.ok) {
+              const err = await response.json();
+              throw new Error(err.error?.message || 'API request failed');
+            }
+            const data = await response.json();
+            return data.candidates[0].content.parts[0].text;
+          } catch(e) {
+            console.error(e);
+            return `[API Error] ${e.message}\n※APIキーが間違っているか、指定モデル(gemini-3.6-flash)が利用できない可能性があります。`;
+          }
+        };
+
+        // スカッド一括解析 (AI)
+        const parseSquadWithAI = async () => {
+          if(!rawSquadText.value) return;
+          isParsing.value = true;
+          const prompt = `以下のテキストデータからサッカーのチームメンバー情報を抽出し、厳密にJSON配列のみを出力してください。
+フォーマット: [{"position": "ST", "name": "名前", "age": 24, "value": 1500, "wage": 10, "years": 3, "hierarchy": "主力", "fciq": "", "photo": ""}]
+value(市場価値)とwage(週給)は単位を「万€」の数値として抽出。
+テキスト:\n${rawSquadText.value}`;
+          
+          const result = await callGemini(prompt, "あなたはデータ抽出AIです。JSONのみを返します。");
+          try {
+            const jsonStr = result.replace(/```json/g, '').replace(/```/g, '').trim();
+            const parsed = JSON.parse(jsonStr);
+            parsed.forEach(p => {
+              if(!p.stats) p.stats = {};
+              squad.push(p);
+            });
+            rawSquadText.value = '';
+          } catch(e) {
+            alert("解析に失敗しました。テキストの形式を変えてみてください。\n" + result);
+          }
+          isParsing.value = false;
+        };
+
+        const initMain = () => {
+          phase.value = 'main';
+          // 準備スカッドの初期化
+          prepReserves.splice(0, prepReserves.length, ...squad);
+        };
+
+        // --- マッチ処理 (D&D等) ---
+        let draggedItem = null;
+        let dragSource = null;
+        const onDragStart = (e, item, source) => { draggedItem = item; dragSource = source; };
+        const onDropPlayer = (e, targetListStr) => {
+          if(dragSource === targetListStr) return;
+          const targetList = targetListStr === 'starters' ? match.starters : match.bench;
+          const sourceList = dragSource === 'starters' ? match.starters : match.bench;
+          const index = sourceList.findIndex(p => p.name === draggedItem.name);
+          if(index > -1) {
+            sourceList.splice(index, 1);
+            targetList.push(draggedItem);
+          }
+        };
+
+        // 監督室での準備スカッド用D&D
+        let dragPrepItem = null; let dragPrepSource = null;
+        const onDragStartPrep = (e, item, source) => { dragPrepItem = item; dragPrepSource = source; };
+        const onDropPrep = (e, targetName) => {
+          if(dragPrepSource === targetName) return;
+          const lists = { starters: prepStarters, bench: prepBench, reserves: prepReserves };
+          const sourceList = lists[dragPrepSource];
+          const targetList = lists[targetName];
+          const idx = sourceList.findIndex(p => p.name === dragPrepItem.name);
+          if(idx > -1) { sourceList.splice(idx, 1); targetList.push(dragPrepItem); }
+        };
+        const savePrepSquad = () => {
+          match.starters = [...prepStarters];
+          match.bench = [...prepBench];
+          alert("マッチデースカッドを適用しました。");
+        };
+
+        const addSubstitution = () => {
+          if(tempSub.out && tempSub.in && tempSub.time) {
+            match.subs.push({...tempSub});
+            tempSub.out = ''; tempSub.in = ''; tempSub.time = '';
+          }
+        };
+
+        const openStatsModal = (player) => {
+          statsModal.player = player;
+          statsModal.data = player.stats || { goals: 0, assists: 0, dribble: '', pass: '', duel: '', keyPass: 0, rating: 6.0, save: '' };
+          statsModal.show = true;
+        };
+        const saveStatsModal = () => {
+          statsModal.player.stats = {...statsModal.data};
+          statsModal.show = false;
+        };
+
+        const simulateMatch = async () => {
+          if(!match.opponent) return alert("対戦相手を選択してください。");
+          isLoading.value = true;
+          
+          // 状況をプロンプト用にテキスト化
+          const contextText = `
+【試合報告】
+日付: ${match.date}
+対戦: ${team.selectedTeam} ${match.myScore} - ${match.oppScore} ${match.opponent} (${match.venue})
+スタメン: ${match.starters.map(p=>p.name).join(', ')}
+交代: ${match.subs.map(s => `${s.time}分 ${s.out}→${s.in}`).join(' | ')}
+監督プロファイル: [規律:${manager.traits.discipline.value}, 情熱:${manager.traits.passion.value}, 厳格:${manager.traits.friendly.value}, 育成:${manager.traits.development.value}, 固執:${manager.traits.stubborn.value}]
+          `;
+          archive.historyContext.push(contextText);
+          
+          const prompt = `以下の試合結果に基づいて、システムプロンプトの指示に従い、クラブ内部の反応、ロッカールーム、メディアの報道などをシミュレーションして出力してください。
+過去の文脈: ${archive.historyContext.slice(-3).join('\n')}
+${contextText}`;
+
+          const res = await callGemini(prompt);
+          match.simulationResult = res;
+          
+          // アーカイブ・ニュース保存
+          archive.matches.push({ date: match.date, opponent: match.opponent, myScore: match.myScore, oppScore: match.oppScore });
+          archive.news.push({ date: match.date, source: '地元スポーツ紙', title: `試合結果: ${team.selectedTeam} 対 ${match.opponent}`, body: `${match.myScore}-${match.oppScore}で終了。詳細は編纂室アーカイブにて。` });
+          
+          isLoading.value = false;
+        };
+
+        // --- 会議室処理 ---
+        const simulateTransferOffer = async () => {
+          if(!transfer.player || !transfer.club || !transfer.fee) return;
+          isLoading.value = true;
+          const prompt = `選手「${transfer.player.name}」(市場価値${transfer.player.value}万€, 役割:${transfer.player.hierarchy})に対して、「${transfer.club}」から「${transfer.fee}万€」の移籍オファーが届きました。
+クラブの会長、オーナー、SDの議論をシミュレーションし、最終的にこのオファーを「容認」するか「却下」するか判断してください。
+出力の最後は必ず「結論: 容認」または「結論: 却下」で締めてください。`;
+
+          const res = await callGemini(prompt);
+          transfer.frontDecision = res;
+          transfer.isAccepted = res.includes('結論: 容認');
+          transfer.isMeeting = false;
+          isLoading.value = false;
+        };
+
+        const rejectOffer = () => {
+          transfer.frontDecision = '';
+          archive.historyContext.push(`【移籍】フロントは${transfer.player.name}への${transfer.club}からのオファー(${transfer.fee}万)を即座に却下した。`);
+          alert("オファーを却下しました。");
+        };
+        const counterOffer = async () => {
+          isLoading.value = true;
+          const prompt = `先ほどのオファーに対してカウンターオファーを提示しました。相手クラブ(${transfer.club})が受け入れるかシミュレーションし、「結論: 容認」か「結論: 否認」で締めてください。`;
+          const res = await callGemini(prompt);
+          transfer.frontDecision = "【カウンター提示結果】\n" + res;
+          transfer.isAccepted = res.includes('結論: 容認');
+          isLoading.value = false;
+        };
+
+        const startPlayerMeeting = () => {
+          transfer.isMeeting = true;
+          transfer.meetingChat = [{role: 'system', text: `フロントが移籍を容認しました。${transfer.player.name}と面談を行います。監督として話しかけてください。`}];
+        };
+        const sendMeetingMessage = async () => {
+          if(!transfer.meetingInput) return;
+          transfer.meetingChat.push({role: 'user', text: transfer.meetingInput});
+          const text = transfer.meetingInput;
+          transfer.meetingInput = '';
+          isLoading.value = true;
+
+          const prompt = `移籍が容認された選手(${transfer.player.name})との面談です。以下の監督の発言に対して、選手の感情(不満度、愛着、野心)を考慮して返答してください。
+監督: 「${text}」`;
+          const res = await callGemini(prompt);
+          transfer.meetingChat.push({role: 'player', text: res});
+          isLoading.value = false;
+        };
+        const finalizeTransfer = () => {
+          archive.historyContext.push(`【移籍成立】${transfer.player.name}が${transfer.club}へ移籍(${transfer.fee}万€)。`);
+          archive.news.push({ date: new Date().toISOString().slice(0,10), source: '移籍市場ニュース', title: `${transfer.player.name}、${transfer.club}へ移籍決定`, body: `移籍金${transfer.fee}万€で合意に至った。` });
+          
+          // スカッドから削除
+          const idx = squad.findIndex(p => p.name === transfer.player.name);
+          if(idx>-1) squad.splice(idx, 1);
+          
+          transfer.frontDecision = ''; transfer.isMeeting = false; transfer.meetingChat = [];
+          alert("移籍が完了しました。");
+        };
+
+        // --- ロッカールーム処理 ---
+        const selectLockerPlayer = (p) => { locker.selectedPlayer = p; };
+        const getLockerChat = (pName) => {
+          if(!locker.chats[pName]) locker.chats[pName] = [];
+          return locker.chats[pName];
+        };
+        const sendLockerMessage = async () => {
+          if(!locker.input || !locker.selectedPlayer) return;
+          const pName = locker.selectedPlayer.name;
+          const text = locker.input;
+          getLockerChat(pName).push({role: 'user', text: text});
+          locker.input = '';
+          isLoading.value = true;
+          
+          const prompt = `選手(${pName}, 役割:${locker.selectedPlayer.hierarchy})とのロッカールームでの会話です。
+過去のチーム状況: ${archive.historyContext.slice(-2).join(' ')}
+監督: 「${text}」
+この選手目線で、監督の性格([厳格/フレンドリー:${manager.traits.friendly.value}])を踏まえ、自然な返答をしてください。短めでお願いします。`;
+          const res = await callGemini(prompt);
+          getLockerChat(pName).push({role: 'player', text: res});
+          isLoading.value = false;
+        };
+
+        // --- 取材室処理 ---
+        const triggerPressEvent = async () => {
+          press.isActive = true;
+          press.chat = [];
+          isLoading.value = true;
+          const prompt = `直近のチーム状況を踏まえ、スポーツ記者が監督に対して1つ質問を投げかけます。質問文のみを出力してください。
+直近の状況: ${archive.historyContext.slice(-1).join(' ')}`;
+          const res = await callGemini(prompt, "あなたは辛口のスポーツ記者です。");
+          press.chat.push({role: 'press', text: res});
+          isLoading.value = false;
+        };
+        const sendPressMessage = async () => {
+          if(!press.input) return;
+          press.chat.push({role: 'user', text: press.input});
+          const text = press.input;
+          press.input = '';
+          isLoading.value = true;
+          const prompt = `記者の質問に対する監督の回答「${text}」を受けて、記者がさらに深掘りする質問か、または納得したリアクションを返してください。短めでお願いします。`;
+          const res = await callGemini(prompt, "あなたはスポーツ記者です。");
+          press.chat.push({role: 'press', text: res});
+          isLoading.value = false;
+        };
+        const endPressEvent = async () => {
+          isLoading.value = true;
+          const chatText = press.chat.map(m => `${m.role === 'user' ? '監督' : '記者'}: ${m.text}`).join('\n');
+          const prompt = `以下のインタビュー内容をもとに、メディアのニュース記事(見出しと本文)を生成してください。形式は「見出し: XXX\n本文: YYY」としてください。\n${chatText}`;
+          const res = await callGemini(prompt, "あなたはスポーツジャーナリストです。");
+          
+          // 雑なパース
+          let title = "監督インタビュー"; let body = res;
+          if(res.includes("見出し:")) {
+            const parts = res.split("本文:");
+            title = parts[0].replace("見出し:", "").trim();
+            body = parts[1] ? parts[1].trim() : res;
+          }
+          archive.news.push({ date: new Date().toISOString().slice(0,10), source: '公式プレスカンファレンス', title, body });
+          press.isActive = false;
+          isLoading.value = false;
+          alert("取材を終了し、ニュース記事が編纂室に追加されました。");
+        };
+
+        return {
+          phase, apiKey, isLoading,
+          manager, nations, leagues, team, squad, rawSquadText, isParsing,
+          activeTab, tabs, match, tempSub, statsModal, transfer, locker, press, archive,
+          prepStarters, prepBench, prepReserves,
+          tempCareerLeague, tempCareerTeam, tempAcLeague, tempAcTeam,
+          currentLeagueTeams, currentLeagueMatches,
+          getTeams, addHistory, setupLeagueTable, addEmptyPlayer, parseSquadWithAI, initMain,
+          onDragStart, onDropPlayer, onDragStartPrep, onDropPrep, savePrepSquad, addSubstitution, openStatsModal, saveStatsModal, simulateMatch,
+          simulateTransferOffer, rejectOffer, counterOffer, startPlayerMeeting, sendMeetingMessage, finalizeTransfer,
+          selectLockerPlayer, getLockerChat, sendLockerMessage,
+          triggerPressEvent, sendPressMessage, endPressEvent
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
