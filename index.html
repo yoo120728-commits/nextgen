@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FC26 キャリアモード 没入型シミュレーター</title>
+<style>
+  :root {
+    --bg-main: #0b0f19;
+    --bg-card: #151d2a;
+    --bg-hover: #222f43;
+    --accent: #10b981;
+    --accent-hover: #059669;
+    --text: #f8fafc;
+    --text-muted: #94a3b8;
+    --border: #2e3d52;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif; }
+  body { background-color: var(--bg-main); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+  header {
+    background-color: var(--bg-card);
+    padding: 0.8rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .app-title { font-size: 1.1rem; font-weight: bold; color: var(--accent); display: flex; align-items: center; gap: 0.5rem; }
+  .status-bar { display: flex; gap: 1rem; font-size: 0.85rem; background: var(--bg-main); padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid var(--border); }
+  .status-item span { color: var(--accent); font-weight: bold; }
+
+  nav {
+    background-color: var(--bg-card);
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .nav-btn {
+    padding: 0.9rem 1.2rem;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+  }
+  .nav-btn:hover { color: var(--text); background-color: var(--bg-hover); }
+  .nav-btn.active { color: var(--accent); border-bottom-color: var(--accent); background-color: rgba(16, 185, 129, 0.08); }
+
+  main { flex: 1; padding: 1.5rem; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .card { background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1.25rem; }
+  .card-title { font-size: 1rem; font-weight: bold; margin-bottom: 1rem; color: var(--accent); display: flex; align-items: center; justify-content: space-between; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+
+  @media (max-width: 900px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+
+  .form-group { margin-bottom: 0.8rem; }
+  label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; font-weight: 500; }
+  input, select, textarea {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    background-color: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.85rem;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+  .btn {
+    padding: 0.5rem 1rem;
+    background-color: var(--accent);
+    color: #000;
+    font-weight: bold;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn:hover { background-color: var(--accent-hover); }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { background-color: var(--bg-hover); }
+  .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+
+  /* Personality Sliders */
+  .trait-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .trait-slider { margin-bottom: 0.6rem; }
+  .trait-labels { display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 0.2rem; color: var(--text-muted); }
+  .trait-val { text-align: center; font-size: 0.75rem; color: var(--accent); font-weight: bold; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+  th, td { padding: 0.6rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-muted); font-weight: 600; background-color: rgba(0,0,0,0.2); }
+  tr:hover { background-color: var(--bg-hover); }
+
+  /* Chat UI */
+  .chat-box { height: 320px; border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-y: auto; background-color: var(--bg-main); display: flex; flex-direction: column; gap: 0.8rem; }
+  .chat-msg { max-width: 85%; padding: 0.6rem 0.9rem; border-radius: 8px; font-size: 0.85rem; line-height: 1.4; }
+  .chat-msg.player { background-color: var(--bg-card); border: 1px solid var(--border); align-self: flex-start; }
+  .chat-msg.manager { background-color: #064e3b; color: #a7f3d0; align-self: flex-end; }
+  .chat-msg .name { font-size: 0.7rem; opacity: 0.7; margin-bottom: 0.2rem; font-weight: bold; }
+
+  /* Match Stats Detail Accordion */
+  .stats-accordion { display: none; background: var(--bg-main); padding: 0.8rem; border-radius: 6px; margin-top: 0.5rem; border: 1px solid var(--border); }
+  .stats-accordion.active { display: block; }
+  .stat-input-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.5rem; font-size: 0.75rem; }
+
+  /* Badge */
+  .badge { display: inline-block; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: bold; }
+  .badge-success { background-color: rgba(16, 185, 129, 0.2); color: #34d399; }
+  .badge-warning { background-color: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+
+  /* Pre-start overlay */
+  #setup-wizard { display: block; }
+  #main-app { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="app-title">⚽ FC26 Immersive Career Simulation</div>
+  <div class="status-bar" id="top-status-bar" style="display:none;">
+    <div class="status-item">クラブ: <span id="hdr-club">-</span></div>
+    <div class="status-item">監督: <span id="hdr-manager">-</span></div>
+    <div class="status-item">予算: <span id="hdr-budget">-</span></div>
+    <div class="status-item">フロント信頼度: <span id="hdr-trust">85%</span></div>
+  </div>
+</header>
+
+<main>
+  <div id="setup-wizard">
+    <div class="card">
+      <div class="card-title">1. 監督プロファイルの作成</div>
+      <div class="grid-2">
+        <div>
+          <div class="form-group grid-2">
+            <div>
+              <label>監督名 (必須)</label>
+              <input type="text" id="mgr-name" value="山田 太郎">
+            </div>
+            <div>
+              <label>年齢 / 出身地 (必須)</label>
+              <div style="display:flex; gap: 0.3rem;">
+                <input type="number" id="mgr-age" value="42" style="width: 70px;">
+                <input type="text" id="mgr-origin" value="日本">
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="background: rgba(0,0,0,0.2); margin-top:0.5rem;">
+            <label style="color:var(--accent); font-weight:bold;">詳細オプション：過去キャリア（複数登録可）</label>
+            <div class="form-group grid-2">
+              <div>
+                <label>現役時代のチーム（リーグ ➔ チーム）</label>
+                <select id="mgr-prev-league-1" onchange="updateTeamDropdown('mgr-prev-league-1', 'mgr-prev-team-1')"></select>
+                <select id="mgr-prev-team-1" style="margin-top:0.3rem;"></select>
+              </div>
+              <div>
+                <label>AC経験のあるクラブ（リーグ ➔ チーム）</label>
+                <select id="mgr-ac-league-1" onchange="updateTeamDropdown('mgr-ac-league-1', 'mgr-ac-team-1')"></select>
+                <select id="mgr-ac-team-1" style="margin-top:0.3rem;"></select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label style="margin-bottom:0.6rem; font-weight:bold; color:var(--accent);">🔺 性格パラメータ (6指標・5段階評価)</label>
+          <div class="trait-grid">
+            <div class="trait-slider">
+              <div class="trait-labels"><span>規律 (1)</span><span>放任 (5)</span></div>
+              <input type="range" min="1" max="5" value="2" id="trait-discipline" onchange="updateTraitVal(this)">
+              <div class="trait-val" id="val-discipline">評価: 2 (規律重視)</div>
+            </div>
+            <div class="trait-slider">
+              <div class="trait-labels"><span>情熱 (1)</span><span>冷静 (5)</span></div>
+              <input type="range" min="1" max="5" value="3" id="trait-passion" onchange="updateTraitVal(this)">
+              <div class="trait-val" id="val-passion">評価: 3 (バランス)</div>
+            </div>
+            <div class="trait-slider">
+              <div class="trait-labels"><span>フレンドリー (1)</span><span>厳格 (5)</span></div>
+              <input type="range" min="1" max="5" value="2" id="trait-friendly" onchange="updateTraitVal(this)">
+              <div class="trait-val" id="val-friendly">評価: 2 (親しみやすい)</div>
+            </div>
+            <div class="trait-slider">
+              <div class="trait-labels"><span>育成 (1)</span><span>補強 (5)</span></div>
+              <input type="range" min="1" max="5" value="2" id="trait-youth" onchange="updateTraitVal(this)">
+              <div class="trait-val" id="val-youth">評価: 2 (自社育成重視)</div>
+            </div>
+            <div class="trait-slider">
+              <div class="trait-labels"><span>固執 (1)</span><span>柔軟 (5)</span></div>
+              <input type="range" min="1" max="5" value="4" id="trait-flexible" onchange="updateTraitVal(this)">
+              <div class="trait-val" id="val-flexible">評価: 4 (柔軟な戦術)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">2. 執政チームの選択 &amp; 初期移籍予算</div>
+      <div class="grid-2">
+        <div>
+          <div class="form-group grid-2">
+            <div>
+              <label>1. リーグを選択</label>
+              <select id="main-league-select" onchange="updateTeamDropdown('main-league-select', 'main-team-select')"></select>
+            </div>
+            <div>
+              <label>2. チームを選択</label>
+              <select id="main-team-select"></select>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="form-group">
+            <label>初期移籍予算 (€) (手入力)</label>
+            <input type="text" id="mgr-budget" value="€85,000,000">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">3. チームスカッドの一括登録 (タブ区切り/コピペ対応)</div>
+      <div class="form-group">
+        <label>POS | 名前 | 年齢 | 価値 | 給与 | 契約年数 の形式でテキスト一括登録</label>
+        <textarea id="squad-input" rows="5">CAM	M. Rogers	25	€75.5M	€175.00K	3年1ヶ月
+CDM	B. Kamara	28	€59.5M	€180.00K	2年1ヶ月
+ST	O. Watkins	28	€65.0M	€130.00K	4年0ヶ月
+CB	P. Torres	27	€45.0M	€100.00K	3年6ヶ月
+GK	E. Martínez	32	€28.0M	€120.00K	2年0ヶ月</textarea>
+      </div>
+      <button class="btn" style="width:100%; padding:0.8rem; font-size:1rem;" onclick="initSimulation()">シミュレーションを開始する</button>
+    </div>
+  </div>
+
+  <div id="main-app">
+    <nav>
+      <button class="nav-btn active" onclick="switchTab('match')">1. マッチ</button>
+      <button class="nav-btn" onclick="switchTab('board')">2. 会議室</button>
+      <button class="nav-btn" onclick="switchTab('locker')">3. ロッカールーム</button>
+      <button class="nav-btn" onclick="switchTab('media')">4. 取材室</button>
+      <button class="nav-btn" onclick="switchTab('office')">5. 監督室</button>
+      <button class="nav-btn" onclick="switchTab('archives')">6. 編纂室</button>
+    </nav>
+
+    <div id="tab-match" class="tab-content active" style="margin-top: 1.25rem;">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">試合結果の報告</div>
+          <div class="form-group grid-2">
+            <div>
+              <label>日付</label>
+              <input type="date" value="2026-08-22">
+            </div>
+            <div>
+              <label>対戦相手（リーグ ➔ チーム）</label>
+              <div style="display:flex; gap:0.3rem;">
+                <select id="match-opp-league" onchange="updateTeamDropdown('match-opp-league', 'match-opp-team')"></select>
+                <select id="match-opp-team"></select>
+              </div>
+            </div>
+          </div>
+          <div class="form-group grid-2">
+            <div>
+              <label>H / A</label>
+              <select><option>Home</option><option>Away</option></select>
+            </div>
+            <div>
+              <label>スコア (自チーム - 相手)</label>
+              <div style="display:flex; gap:0.5rem; align-items:center;">
+                <input type="number" id="score-home" value="2" style="width:60px; text-align:center;">
+                -
+                <input type="number" id="score-away" value="1" style="width:60px; text-align:center;">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+              <label style="margin:0;">スタメン &amp; 出場選手</label>
+              <button class="btn btn-outline btn-sm" onclick="toggleMatchStatsAccordion()">▶ 詳細スタッツの入力（オプション）</button>
+            </div>
+
+            <table>
+              <thead>
+                <tr><th>出場</th><th>POS</th><th>選手名</th><th>Rating</th></tr>
+              </thead>
+              <tbody id="match-squad-simple-body"></tbody>
+            </table>
+
+            <div class="stats-accordion" id="stats-accordion">
+              <div style="font-size:0.8rem; font-weight:bold; color:var(--accent); margin-bottom:0.5rem;">選手個別の詳細インパクトデータ</div>
+              <div id="match-squad-detail-body"></div>
+            </div>
+          </div>
+
+          <button class="btn" style="width:100%; margin-top:1rem;" onclick="submitMatch()">試合結果を確定してAIレポート生成</button>
+        </div>
+
+        <div>
+          <div class="card" id="match-ai-feed" style="display:none;">
+            <div class="card-title">🤖 AI 試合シミュレーション解析</div>
+            <p id="match-ai-text" style="font-size:0.85rem; line-height:1.6; color: #cbd5e1; white-space:pre-wrap;"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-board" class="tab-content" style="margin-top: 1.25rem;">
+      <div class="card">
+        <div class="card-title">会議室 (移籍オフィス)</div>
+        <div class="grid-2">
+          <div>
+            <div class="form-group">
+              <label>対象選手</label>
+              <select id="board-player-select"></select>
+            </div>
+            <div class="form-group grid-2">
+              <div>
+                <label>オファー元リーグ</label>
+                <select id="board-offer-league" onchange="updateTeamDropdown('board-offer-league', 'board-offer-team')"></select>
+              </div>
+              <div>
+                <label>オファー元チーム</label>
+                <select id="board-offer-team"></select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>提示移籍金 (€)</label>
+              <input type="text" id="board-offer-fee" value="€80,000,000">
+            </div>
+            <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+              <button class="btn" onclick="processTransfer('accept')">フロント売却容認</button>
+              <button class="btn btn-outline" onclick="processTransfer('counter')">カウンターオファー</button>
+              <button class="btn btn-outline" style="border-color:var(--danger); color:var(--danger);" onclick="processTransfer('reject')">即時却下</button>
+            </div>
+          </div>
+
+          <div>
+            <label>移籍交渉ログ &amp; 選手面談</label>
+            <div class="chat-box" id="board-log">
+              <div class="chat-msg player">
+                <div class="name">フロント理事会</div>
+                「移籍オファーが届いた場合、ここで審議します。フロントの判断と選手個人の意思決定をシミュレートします。」
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-locker" class="tab-content" style="margin-top: 1.25rem;">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">選手個別の面談 &amp; モチベーション</div>
+          <div class="form-group">
+            <label>話しかける選手を選択</label>
+            <select id="locker-player-select" onchange="loadLockerChat()"></select>
+          </div>
+
+          <div style="margin-bottom: 1rem;">
+            <span class="badge badge-success" id="locker-status">モチベーション: 高い</span>
+            <span class="badge badge-warning">要求: スタメン保証</span>
+          </div>
+
+          <div class="chat-box" id="locker-chat-box">
+            <div class="chat-msg player">
+              <div class="name" id="chat-player-name">M. Rogers</div>
+              「ボス、最近の戦術について話があります。僕の役割についてどう考えていますか？」
+            </div>
+          </div>
+
+          <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+            <input type="text" id="locker-input" placeholder="監督としての言葉を入力...">
+            <button class="btn" onclick="sendLockerMessage()">対話する</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">チーム内ダイナミクス (不満リスク &amp; 競争)</div>
+          <table>
+            <thead>
+              <tr><th>選手名</th><th>役割</th><th>不満度</th><th>状態</th></tr>
+            </thead>
+            <tbody id="locker-dynamics-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-media" class="tab-content" style="margin-top: 1.25rem;">
+      <div class="card">
+        <div class="card-title">取材室 (公式記者会見)</div>
+        <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1rem;">試合前後の記者からの質問に回答します。ここでの回答はニュース記事として生成され、アーカイブに閲覧可能となります。</p>
+
+        <div class="chat-box" id="media-chat-box">
+          <div class="chat-msg player">
+            <div class="name">スカイスポーツ 記者</div>
+            「監督、本日の試合の勝因と、チームの今後の補強戦略についてお聞かせいただけますか？」
+          </div>
+        </div>
+
+        <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+          <input type="text" id="media-input" placeholder="回答を入力...">
+          <button class="btn" onclick="sendMediaAnswer()">回答してニュース生成</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-office" class="tab-content" style="margin-top: 1.25rem;">
+      <div class="card">
+        <div class="card-title">監督室 (FCIQロール設定 &amp; 内部序列)</div>
+        <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1rem;">※内部序列（絶対的〜構想外）は選手本人は認知しません。ロッカールームで直接伝えた場合のみ認識されます。</p>
+        <table>
+          <thead>
+            <tr><th>名前</th><th>POS</th><th>FCIQ内の役割 (ロール)</th><th>監督内の内部序列</th></tr>
+          </thead>
+          <tbody id="office-squad-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="tab-archives" class="tab-content" style="margin-top: 1.25rem;">
+      <div class="card">
+        <div class="card-title">編纂室 (Archives &amp; News)</div>
+        <div id="news-archive">
+          <div style="border-left: 3px solid var(--accent); padding-left: 1rem; margin-bottom: 1rem; background: rgba(255,255,255,0.02); padding:0.8rem;">
+            <div style="font-size:0.75rem; color:var(--text-muted);">2026-08-22 | 公式ニュース</div>
+            <div style="font-weight:bold; margin:0.2rem 0;">新シミュレーションキャリアが開幕！</div>
+            <p style="font-size:0.8rem; color:var(--text-muted);">新監督のもと、チームの新たな挑戦がスタートする...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  // FC26 網羅的データベース構造 (主要リーグ & チーム)
+  const fc26Database = {
+    "Premier League (英)": ["Arsenal", "Aston Villa", "Bournemouth", "Brentford", "Brighton", "Chelsea", "Crystal Palace", "Everton", "Fulham", "Ipswich Town", "Leicester City", "Liverpool", "Manchester City", "Manchester United", "Newcastle United", "Nottingham Forest", "Southampton", "Tottenham Hotspur", "West Ham United", "Wolverhampton Wanderers"],
+    "LaLiga EA SPORTS (西)": ["Athletic Club", "Atlético de Madrid", "CA Osasuna", "CD Leganés", "FC Barcelona", "Getafe CF", "Girona FC", "Rayo Vallecano", "RC Celta", "RCD Mallorca", "Real Betis", "Real Madrid", "Real Sociedad", "Real Valladolid", "Sevilla FC", "UD Las Palmas", "Valencia CF", "Villarreal CF"],
+    "Bundesliga (独)": ["1. FSV Mainz 05", "Bayer 04 Leverkusen", "FC Bayern München", "Borussia Dortmund", "Eintracht Frankfurt", "RB Leipzig", "FC Schalke 04", "VfB Stuttgart", "VfL Wolfsburg"],
+    "Serie A Enilive (伊)": ["Atalanta", "Bologna", "Fiorentina", "Inter", "Juventus", "Lazio", "AC Milan", "Napoli", "Roma", "Torino"],
+    "Ligue 1 McDonald's (仏)": ["AS Monaco", "LOSC Lille", "Olympique de Marseille", "Olympique Lyonnais", "Paris Saint-Germain", "RC Lens", "Stade Rennais FC"],
+    "EFL Championship (英2部)": ["Birmingham City", "Blackburn Rovers", "Leeds United", "Norwich City", "Sunderland", "West Bromwich Albion"],
+    "Saudi Pro League (サウジ)": ["Al Ahli", "Al Hilal", "Al Ittihad", "Al Nassr"],
+    "MLS (米)": ["Inter Miami CF", "LA Galaxy", "Los Angeles FC"]
+  };
+
+  let appState = {
+    manager: {},
+    team: '',
+    league: '',
+    budget: '',
+    squad: []
+  };
+
+  // 汎用: リーグ/チームの2段階プルダウン連動
+  function populateLeagueDropdown(leagueSelectId) {
+    const sel = document.getElementById(leagueSelectId);
+    if(!sel) return;
+    sel.innerHTML = '';
+    Object.keys(fc26Database).forEach(league => {
+      const opt = document.createElement('option');
+      opt.value = league;
+      opt.textContent = league;
+      sel.appendChild(opt);
+    });
+  }
+
+  function updateTeamDropdown(leagueSelectId, teamSelectId) {
+    const leagueSel = document.getElementById(leagueSelectId);
+    const teamSel = document.getElementById(teamSelectId);
+    if(!leagueSel || !teamSel) return;
+    
+    const selectedLeague = leagueSel.value;
+    const teams = fc26Database[selectedLeague] || [];
+    
+    teamSel.innerHTML = '';
+    teams.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      teamSel.appendChild(opt);
+    });
+  }
+
+  // 初期化時のプルダウン準備
+  window.onload = function() {
+    ['mgr-prev-league-1', 'mgr-ac-league-1', 'main-league-select', 'match-opp-league', 'board-offer-league'].forEach(id => {
+      populateLeagueDropdown(id);
+    });
+
+    updateTeamDropdown('mgr-prev-league-1', 'mgr-prev-team-1');
+    updateTeamDropdown('mgr-ac-league-1', 'mgr-ac-team-1');
+    updateTeamDropdown('main-league-select', 'main-team-select');
+    updateTeamDropdown('match-opp-league', 'match-opp-team');
+    updateTeamDropdown('board-offer-league', 'board-offer-team');
+  };
+
+  function updateTraitVal(slider) {
+    const labels = {
+      'trait-discipline': ['超規律', '規律重視', 'バランス', '自由め', '完全放任'],
+      'trait-passion': ['超情熱', '情熱的', 'バランス', '冷静', '極度の冷静'],
+      'trait-friendly': ['非常にフレンドリー', 'フレンドリー', '普通', '厳格', '極度の厳格'],
+      'trait-youth': ['育成至上主義', '自社育成重視', 'バランス', '補強重視', '即戦力・補強至上'],
+      'trait-flexible': ['戦術固執', 'やや固執', 'バランス', '柔軟な戦術', '極めて柔軟']
+    };
+    const key = slider.id;
+    const val = slider.value;
+    document.getElementById(`val-${key.replace('trait-', '')}`).innerText = `評価: ${val} (${labels[key][val-1]})`;
+  }
+
+  function initSimulation() {
+    appState.manager = {
+      name: document.getElementById('mgr-name').value,
+      age: document.getElementById('mgr-age').value,
+      origin: document.getElementById('mgr-origin').value,
+      prevTeam: document.getElementById('mgr-prev-team-1').value,
+      acTeam: document.getElementById('mgr-ac-team-1').value,
+      traits: {
+        discipline: document.getElementById('trait-discipline').value,
+        passion: document.getElementById('trait-passion').value,
+        friendly: document.getElementById('trait-friendly').value,
+        youth: document.getElementById('trait-youth').value,
+        flexible: document.getElementById('trait-flexible').value
+      }
+    };
+
+    appState.league = document.getElementById('main-league-select').value;
+    appState.team = document.getElementById('main-team-select').value;
+    appState.budget = document.getElementById('mgr-budget').value;
+
+    // TSV Parse
+    const rawText = document.getElementById('squad-input').value.trim();
+    const lines = rawText.split('\n');
+    appState.squad = lines.map((line, idx) => {
+      const parts = line.split('\t');
+      return {
+        id: idx,
+        pos: parts[0] || 'CM',
+        name: parts[1] || `Player ${idx+1}`,
+        age: parts[2] || '24',
+        value: parts[3] || '€10.0M',
+        wage: parts[4] || '€50.0K',
+        contract: parts[5] || '3年',
+        role: idx === 0 ? 'Shadow Striker' : (parts[0] === 'GK' ? 'Sweeper Keeper' : 'Holding'),
+        status: idx === 0 ? '絶対的' : '主力',
+        unrest: 5
+      };
+    });
+
+    document.getElementById('hdr-club').textContent = appState.team;
+    document.getElementById('hdr-manager').textContent = appState.manager.name;
+    document.getElementById('hdr-budget').textContent = appState.budget;
+
+    document.getElementById('setup-wizard').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+    document.getElementById('top-status-bar').style.display = 'flex';
+
+    renderAllViews();
+  }
+
+  function renderAllViews() {
+    // 1. Match Simple & Detail Body
+    const simpleBody = document.getElementById('match-squad-simple-body');
+    const detailBody = document.getElementById('match-squad-detail-body');
+    simpleBody.innerHTML = '';
+    detailBody.innerHTML = '';
+
+    appState.squad.forEach((p, i) => {
+      simpleBody.innerHTML += `
+        <tr>
+          <td><input type="checkbox" checked></td>
+          <td><span style="color:var(--accent); font-weight:bold;">${p.pos}</span></td>
+          <td>${p.name}</td>
+          <td><input type="number" step="0.1" value="7.0" style="width:55px;"></td>
+        </tr>
+      `;
+
+      const isGK = p.pos === 'GK';
+      detailBody.innerHTML += `
+        <div style="border-bottom:1px solid var(--border); padding:0.4rem 0;">
+          <div style="font-weight:bold; color:var(--accent); margin-bottom:0.2rem;">${p.name} (${p.pos})</div>
+          <div class="stat-input-group">
+            <div>ゴール: <input type="number" value="0" style="width:45px;"></div>
+            <div>アシスト: <input type="number" value="0" style="width:45px;"></div>
+            <div>ドリブル: <input type="text" value="2/3" style="width:50px;"></div>
+            <div>パス成功: <input type="text" value="35/40" style="width:55px;"></div>
+            <div>デュエル: <input type="text" value="5/8" style="width:50px;"></div>
+            <div>キーパス: <input type="number" value="1" style="width:45px;"></div>
+            ${isGK ? '<div>セーブ: <input type="text" value="4/5" style="width:50px;"></div>' : ''}
+          </div>
+        </div>
+      `;
+    });
+
+    // Dropdowns
+    const boardSel = document.getElementById('board-player-select');
+    const lockerSel = document.getElementById('locker-player-select');
+    boardSel.innerHTML = ''; lockerSel.innerHTML = '';
+    appState.squad.forEach(p => {
+      boardSel.innerHTML += `<option value="${p.id}">${p.name} (${p.pos}) - ${p.value}</option>`;
+      lockerSel.innerHTML += `<option value="${p.id}">${p.name} (${p.pos})</option>`;
+    });
+
+    // Office
+    const officeBody = document.getElementById('office-squad-body');
+    officeBody.innerHTML = '';
+    appState.squad.forEach(p => {
+      officeBody.innerHTML += `
+        <tr>
+          <td><b>${p.name}</b></td>
+          <td>${p.pos}</td>
+          <td>
+            <select>
+              <option ${p.role === 'Shadow Striker' ? 'selected':''}>Shadow Striker</option>
+              <option ${p.role === 'Holding' ? 'selected':''}>Holding</option>
+              <option ${p.role === 'Sweeper Keeper' ? 'selected':''}>Sweeper Keeper</option>
+              <option>Playmaker</option>
+            </select>
+          </td>
+          <td>
+            <select>
+              <option ${p.status === '絶対的' ? 'selected':''}>絶対的</option>
+              <option ${p.status === '主力' ? 'selected':''}>主力</option>
+              <option>ローテーション</option>
+              <option>育成枠</option>
+              <option>構想外</option>
+            </select>
+          </td>
+        </tr>
+      `;
+    });
+
+    // Dynamics
+    const dynBody = document.getElementById('locker-dynamics-body');
+    dynBody.innerHTML = '';
+    appState.squad.forEach(p => {
+      dynBody.innerHTML += `
+        <tr>
+          <td>${p.name}</td>
+          <td>${p.status}</td>
+          <td>${p.unrest}%</td>
+          <td><span class="badge badge-success">良好</span></td>
+        </tr>
+      `;
+    });
+  }
+
+  function toggleMatchStatsAccordion() {
+    const el = document.getElementById('stats-accordion');
+    el.classList.toggle('active');
+  }
+
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(`tab-${tabId}`).classList.add('active');
+    event.target.classList.add('active');
+  }
+
+  function submitMatch() {
+    const oppTeam = document.getElementById('match-opp-team').value;
+    const scoreH = document.getElementById('score-home').value;
+    const scoreA = document.getElementById('score-away').value;
+
+    const aiText = `【シミュレーション結果】\n${appState.team} ${scoreH} - ${scoreA} ${oppTeam}\n\n監督の性格パラメータ（柔軟性: ${appState.manager.traits.flexible}）を反映し、チームは流動的なポジションチェンジを展開。詳細スタッツのキーパス数値が示す通り、中盤での崩しが機能しました。`;
+    document.getElementById('match-ai-text').innerText = aiText;
+    document.getElementById('match-ai-feed').style.display = 'block';
+  }
+
+  function processTransfer(type) {
+    const log = document.getElementById('board-log');
+    const pSel = document.getElementById('board-player-select');
+    const pName = appState.squad[pSel.value]?.name || '選手';
+    const offerTeam = document.getElementById('board-offer-team').value;
+    const fee = document.getElementById('board-offer-fee').value;
+
+    if(type === 'accept') {
+      log.innerHTML += `<div class="chat-msg manager"><div class="name">フロント</div>${pName} に対する ${offerTeam} からの ${fee} のオファーを容認しました。個人面談に移行します。</div>`;
+    } else if(type === 'counter') {
+      log.innerHTML += `<div class="chat-msg manager"><div class="name">フロント</div>${offerTeam} へカウンターオファーを送信しました。</div>`;
+    } else {
+      log.innerHTML += `<div class="chat-msg manager" style="background:#450a0a; color:#fca5a5;"><div class="name">フロント</div>オファーを即時却下しました。</div>`;
+    }
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function sendLockerMessage() {
+    const input = document.getElementById('locker-input');
+    const msg = input.value.trim();
+    if(!msg) return;
+
+    const chatBox = document.getElementById('locker-chat-box');
+    chatBox.innerHTML += `<div class="chat-msg manager"><div class="name">${appState.manager.name} (監督)</div>${msg}</div>`;
+    input.value = '';
+
+    setTimeout(() => {
+      chatBox.innerHTML += `<div class="chat-msg player"><div class="name">選手</div>「監督のおっしゃる意図は理解しました。次のチャンスに向けて準備します。」</div>`;
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }, 500);
+  }
+
+  function sendMediaAnswer() {
+    const input = document.getElementById('media-input');
+    const msg = input.value.trim();
+    if(!msg) return;
+
+    const chatBox = document.getElementById('media-chat-box');
+    chatBox.innerHTML += `<div class="chat-msg manager"><div class="name">${appState.manager.name}</div>「${msg}」</div>`;
+    input.value = '';
+
+    const newsBox = document.getElementById('news-archive');
+    newsBox.innerHTML = `
+      <div style="border-left: 3px solid var(--accent); padding-left: 1rem; margin-bottom: 1rem; background: rgba(255,255,255,0.02); padding:0.8rem;">
+        <div style="font-size:0.75rem; color:var(--text-muted);">記者会見速報</div>
+        <div style="font-weight:bold; margin:0.2rem 0;">監督「${msg.substring(0, 18)}...」</div>
+        <p style="font-size:0.8rem; color:var(--text-muted);">会見での強気な発言がメディアで話題となっている。</p>
+      </div>
+    ` + newsBox.innerHTML;
+  }
+</script>
+</body>
+</html>
